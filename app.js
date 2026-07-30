@@ -97,9 +97,35 @@ function checkEn(ans, entry){
   return {q:1,msg:"Non.",cls:"bad"};
 }
 
+/* ───────── accent pad ─────────
+   Only the characters that actually occur in the French lists. */
+const ACCENTS=["é","è","à","ê","ç","ô","î","œ","ï","â","û","ë","ù"];
+let padTarget=null;
+const pad=(function(){
+  const p=el("div",{class:"accent-pad hidden",role:"toolbar","aria-label":"Accents français"});
+  ACCENTS.forEach(ch=>{
+    const b=el("button",{type:"button",tabindex:"-1"},ch);
+    b.addEventListener("mousedown",ev=>ev.preventDefault()); // keep input focus
+    b.addEventListener("click",()=>{
+      if(!padTarget)return;
+      const st=padTarget.selectionStart??padTarget.value.length,
+            en=padTarget.selectionEnd??padTarget.value.length;
+      padTarget.setRangeText(ch,st,en,"end");
+      padTarget.dispatchEvent(new Event("input",{bubbles:true}));
+      padTarget.focus();
+    });
+    p.append(b);
+  });
+  document.body.append(p);
+  return p;
+})();
+function showPad(input){ padTarget=input; pad.classList.remove("hidden"); document.body.classList.add("pad-on"); }
+function hidePad(){ padTarget=null; pad.classList.add("hidden"); document.body.classList.remove("pad-on"); }
+
 /* ───────── router ───────── */
 const VIEWS=["accueil","revision","suivi"];
 function go(v){
+  hidePad();
   VIEWS.forEach(x=>{
     $("#view-"+x).classList.toggle("hidden",x!==v);
     $("#tab-"+x).setAttribute("aria-selected",x===v?"true":"false");
@@ -237,6 +263,7 @@ let revLen=20;
 
 function renderQ(){
   const v=$(sess.view);
+  hidePad();
   if(sess.i>=sess.queue.length)return sessionEnd(v);
   v.innerHTML="";
   const p=pct(sess.i,sess.queue.length);
@@ -265,6 +292,7 @@ function renderQ(){
     srsGrade(e.id,res.q);
     if(res.q>=3)sess.ok++; else sess.wrong.push(e.id);
     inp.disabled=true; check.disabled=true;
+    hidePad();
     card.append(
       el("div",{class:"feedback "+res.cls},res.msg,
         el("span",{class:"note"},
@@ -276,6 +304,7 @@ function renderQ(){
   row.append(check);
   card.append(inp,row);
   v.append(card);
+  if(enfr) showPad(inp);
   setTimeout(()=>inp.focus(),50);
 }
 function nextBtn(){
@@ -284,6 +313,7 @@ function nextBtn(){
   return el("div",{class:"btn-row"},b);
 }
 function sessionEnd(v){
+  hidePad();
   v.innerHTML="";
   S.sessions.push({t:Date.now(),n:sess.queue.length,ok:sess.ok,label:sess.label});save();
   v.append(
