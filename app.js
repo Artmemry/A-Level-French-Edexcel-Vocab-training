@@ -553,7 +553,7 @@ function renderQ(){
   } else {
     promptNode=el("div",{class:"headword"},e[K][0]," ",speakBtn(e[K][0]));
   }
-  const others=(dict?[]:(enfr?e.en:e[K]).slice(1));
+  const others=(dict||enfr)?[]:e[K].slice(1);   // production shows ONE gloss to translate; full set revealed in feedback
   const card=el("div",{class:"entry"},
     el("div",{class:"entry-meta"},`${sess.label} · ${meta}`),
     promptNode,
