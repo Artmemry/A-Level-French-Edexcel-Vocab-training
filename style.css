@@ -212,3 +212,22 @@ textarea.code{
 footer.site{max-width:1060px; margin:0 auto; padding:20px; border-top:1px solid var(--line);
   font-family:var(--font-mono); font-size:.72rem; color:var(--muted)}
 .hidden{display:none!important}
+
+/* ── floating accent pad (EN → FR typing) ── */
+.accent-pad{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:max(14px, env(safe-area-inset-bottom));
+  display:flex; gap:4px; flex-wrap:wrap; justify-content:center;
+  background:var(--card); border:1.5px solid var(--ink); border-radius:12px;
+  box-shadow:0 6px 24px rgba(26,36,64,.18);
+  padding:8px 10px; z-index:50; max-width:min(96vw, 560px);
+}
+.accent-pad button{
+  font-family:var(--font-display); font-size:1.25rem; line-height:1;
+  min-width:38px; padding:8px 6px;
+  border:1px solid var(--line-strong); border-radius:8px;
+  background:var(--paper); color:var(--ink); cursor:pointer;
+}
+.accent-pad button:hover{border-color:var(--bleu); background:var(--bleu-pale)}
+.accent-pad button:active{background:var(--bleu); color:#fff}
+body.pad-on main{padding-bottom:150px}
