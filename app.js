@@ -36,6 +36,35 @@ CORPUS.forEach(e=>{
   u.lessons[e.lesson].ids.push(e.id);
 });
 
+/* ───────── cross-acceptance indexes ─────────
+   Weak-point fix: many lists teach several French words for one English gloss
+   (l'Hexagone / la métropole), and several tenses share one gloss
+   (a occupé / ont occupé = "occupied"). Any list-sanctioned answer counts. */
+function xLexkey(s){
+  s=s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"");
+  s=s.replace(/^(le |la |les |l'|un |une |des )/,"");
+  s=s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/œ/g,"oe").replace(/-/g," ");
+  return s.replace(/\s+/g," ").trim();
+}
+function xCanonEn(s){
+  s=s.toLowerCase().replace(/’/g,"'").replace(/-/g," ").replace(/\s*\([^)]*\)/g,"");
+  s=s.replace(/^(the |a |an |to )/,"").replace(/\.{3}$/,"");
+  return s.replace(/\s+/g," ").trim();
+}
+const GLOSS_TO_ENTRIES={};   // canonical EN gloss -> entries carrying it (global)
+const LEX_TO_GLOSSES={};     // French lexkey -> union of EN glosses across duplicate entries
+CORPUS.forEach(e=>{
+  e.en.forEach(g=>{
+    const cg=xCanonEn(g);
+    (GLOSS_TO_ENTRIES[cg]=GLOSS_TO_ENTRIES[cg]||[]).push(e);
+  });
+  e.fr.forEach(f=>{
+    const lk=xLexkey(f);
+    const set=(LEX_TO_GLOSSES[lk]=LEX_TO_GLOSSES[lk]||new Set());
+    e.en.forEach(g=>set.add(g));
+  });
+});
+
 /* ───────── SM-2 ───────── */
 function srsGet(id){ return S.srs[id]||(S.srs[id]={ef:2.5,int:0,reps:0,due:0,seen:0,ok:0,lapses:0}); }
 function srsGrade(id,q){
@@ -85,21 +114,38 @@ function lev1(a,b){ // true if levenshtein distance ≤1
   return edits+(a.length-i)+(b.length-j)<=1;
 }
 
-/* answer checking — returns {q, msg, cls} */
-function checkFr(ans, entry){
-  const raw=normFr(ans); if(!raw)return null;
-  const vars=entry.fr.map(normFr);
+/* answer checking — returns {q, msg, cls[, alt]} */
+function frTiers(raw, variants){
+  const vars=variants.map(normFr);
   if(vars.includes(raw)) return {q:5,msg:"Exact.",cls:"good"};
   if(vars.map(stripAcc).includes(stripAcc(raw))) return {q:4,msg:"Bien — mais attention aux accents.",cls:"good"};
   if(vars.map(v=>stripArt(v)).includes(stripArt(raw))||vars.map(v=>stripAcc(stripArt(v))).includes(stripAcc(stripArt(raw))))
     return {q:3,msg:"Le mot est bon — vérifie l'article.",cls:"good"};
   if(vars.some(v=>lev1(stripAcc(stripArt(v)),stripAcc(stripArt(raw)))&&stripArt(v).length>=5))
     return {q:3,msg:"Presque — vérifie l'orthographe.",cls:"good"};
+  return null;
+}
+function checkFr(ans, entry, promptedGloss){
+  const raw=normFr(ans); if(!raw)return null;
+  const own=frTiers(raw, entry.fr);
+  if(own) return own;
+  // cross-acceptance: any entry in the lists sharing the prompted gloss
+  const sibs=(GLOSS_TO_ENTRIES[xCanonEn(promptedGloss||entry.en[0])]||[]).filter(x=>x.id!==entry.id);
+  for(const s of sibs){
+    const hit=frTiers(raw, s.fr);
+    if(hit) return {...hit, alt:s};
+  }
   return {q:1,msg:"Non.",cls:"bad"};
 }
 function checkEn(ans, entry){
   const raw=normEn(ans); if(!raw)return null;
-  const vars=entry.en.map(normEn);
+  // union of glosses across every duplicate of this lexeme in the corpus
+  const pool=new Set(entry.en);
+  entry.fr.forEach(f=>{
+    const s=LEX_TO_GLOSSES[xLexkey(f)];
+    if(s)s.forEach(g=>pool.add(g));
+  });
+  const vars=[...pool].map(normEn);
   if(vars.includes(raw)||vars.map(stripEnLead).includes(stripEnLead(raw)))
     return {q:5,msg:"Exact.",cls:"good"};
   if(vars.some(v=>lev1(stripEnLead(v),stripEnLead(raw))&&stripEnLead(v).length>=5))
@@ -296,7 +342,7 @@ function renderQ(){
   let done=false;
   function doCheck(){
     if(done)return;
-    const res=enfr? checkFr(inp.value,e) : checkEn(inp.value,e);
+    const res=enfr? checkFr(inp.value,e,e.en[0]) : checkEn(inp.value,e);
     if(!res)return;
     done=true;
     srsGrade(e.id,res.q);
@@ -305,6 +351,7 @@ function renderQ(){
     hidePad();
     card.append(
       el("div",{class:"feedback "+res.cls},res.msg,
+        res.alt? el("span",{class:"note"},"Ta réponse « ",res.alt.fr[0]," » figure aussi dans tes listes pour ce sens — les deux comptent."):null,
         el("span",{class:"note"},
           el("b",null,e.fr.join(" ; "))," — ",e.en.join(" ; "))),
       nextBtn());
