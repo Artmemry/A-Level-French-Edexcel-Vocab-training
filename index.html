@@ -20,6 +20,7 @@
     <nav class="tabs" aria-label="Navigation principale">
       <button id="tab-accueil" aria-selected="true">Accueil</button>
       <button id="tab-revision" aria-selected="false">Révision</button>
+      <button id="tab-examen" aria-selected="false">Épreuve</button>
       <button id="tab-suivi" aria-selected="false">Suivi</button>
     </nav>
   </div>
@@ -28,16 +29,17 @@
 <main>
   <section id="view-accueil"></section>
   <section id="view-revision" class="hidden"></section>
+  <section id="view-examen" class="hidden"></section>
   <section id="view-suivi" class="hidden"></section>
 </main>
 
 <footer class="site">
   le lexique¹ — n.m. 1. ensemble des mots d'une langue. 2. ton outil de révision.
   · Progression enregistrée localement sur cet appareil.
-  · <a href="teacher.html" style="color:var(--bleu)">Espace professeur</a>
 </footer>
 
 <script src="data/corpus.js"></script>
+<script src="assignments.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

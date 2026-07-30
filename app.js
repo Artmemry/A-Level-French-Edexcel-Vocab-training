@@ -1,32 +1,125 @@
-/* Le Lexique v2 — engine
-   Typed recall only, both directions. Entries carry interchangeable variants:
-   fr:[…] French forms, en:[…] English meanings. Any variant = correct; the
-   full set is revealed after every answer.
-   Data: window.CORPUS. Storage: localStorage "lexique-fr-v2".
+/* Le Lexique / El Léxico — engine v3
+   Shared logic; language-specific parts live only in CFG and T blocks.
+   v3 additions: direction-split SRS, dictation (TTS), leech deck, exam mode,
+   weekly assignment, per-lesson export (code v2), print support.
 */
 (function(){
 "use strict";
 
-/* ───────── config — teacher-editable ─────────
-   MS Forms drop-box. Leave FORMS_URL empty ("") to hide the button. */
-const FORMS_URL="https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=dBTLADSljUaCn2NuzjLCTEWSzXdNOvRDicS2YScslGFURTU4UjdJOTZWSEQyQzRHRTUxNzk4OEpFNyQlQCNjPTEu";
-const FORMS_FIELD_NAME="r08cab71007074f60a012ed77717b62d2";
-const FORMS_FIELD_CODE="rbd3a09625c5c42399a03efd42ac1d5fa";
-function formsLink(name, code){
-  return FORMS_URL+"&"+FORMS_FIELD_NAME+"="+encodeURIComponent(name||"(sans nom)")
-                 +"&"+FORMS_FIELD_CODE+"="+encodeURIComponent(code);
-}
+/*CFG-START*/
+const CFG={
+  key:"fr",
+  ls:"lexique-fr-v2",
+  prefix:"LEXFR2.",
+  ttsLang:"fr-FR",
+  artRe:/^(le |la |les |l'|un |une |des )/,
+  accents:["é","è","à","ê","ç","ô","î","œ","ï","â","û","ë","ù"],
+  FORMS_URL:"https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=dBTLADSljUaCn2NuzjLCTEWSzXdNOvRDicS2YScslGFURTU4UjdJOTZWSEQyQzRHRTUxNzk4OEpFNyQlQCNjPTEu",
+  FORMS_FIELD_NAME:"r08cab71007074f60a012ed77717b62d2",
+  FORMS_FIELD_CODE:"rbd3a09625c5c42399a03efd42ac1d5fa"
+};
+/*CFG-END*/
 
-/* ───────── state ───────── */
-const LS="lexique-fr-v2", DAY=86400000;
+/*T-START*/
+const T={
+  padLabel:"Accents français",
+  homeTitle:"Tes listes de vocabulaire",
+  homeLede:"Les listes reprennent exactement le classeur : choisis une unité, puis une leçon. Consulte la liste ou entraîne-toi en tapant tes réponses — dans les deux sens. Ta progression reste sur cet appareil ; exporte ton code dans Suivi pour l'envoyer au professeur.",
+  nameLabel:"Ton nom (pour le code exporté)",
+  namePh:"Prénom + initiale, ex. Sophie K.",
+  dueCard:n=>n+" carte"+(n>1?"s":"")+" à réviser aujourd'hui",
+  startReview:"Lancer la révision →",
+  unitsLabel:"Unités",
+  unitMeta:(l,w,s,m)=>`${l} leçons · ${w} mots · ${s} vus · ${m} maîtrisés`,
+  lessonLine:(n,t,c)=>`Leçon ${n} — ${t} (${c} mots)`,
+  lessonMeta:(s,m)=>`${s} vus · ${m} maîtrisés`,
+  accSuffix:" % de précision",
+  list:"Liste", practise:"S'entraîner",
+  backUnits:"← Retour aux unités", practiseThis:"S'entraîner sur cette liste",
+  print:"Imprimer",
+  colTarget:"Français", colEn:"English", colStatus:"Statut",
+  stMast:"maîtrisé", stCur:"en cours", stNew:"pas encore vu",
+  listLegend:"○ pas encore vu · ◐ en cours · ● maîtrisé (intervalle ≥ 3 semaines). Les formes séparées par « ; » sont interchangeables : n'importe laquelle compte juste.",
+  back:"← Retour",
+  dirLabel:"Sens de traduction",
+  dirEnFr:"Anglais → Français", dirFrEn:"Français → Anglais", dirMix:"Mixte", dirDict:"Dictée 🔊",
+  dictNoTts:"Ton navigateur n'offre pas de voix — dictée indisponible",
+  startLesson:"Commencer — toute la leçon",
+  reviewTitle:"Révision du jour",
+  reviewLede:n=>`${n} carte${n>1?"s":""} arrivent à échéance (toutes unités, production d'abord). La répétition espacée choisit pour toi.`,
+  reviewEmpty:"Rien à réviser pour l'instant — entraîne-toi sur une leçon depuis l'accueil, et les mots reviendront ici au bon moment.",
+  nWords:"Nombre de mots", all:"Tout", start:"Commencer",
+  quit:"← Quitter",
+  metaEnFrArt:"anglais → français (avec l'article)", metaEnFr:"anglais → français",
+  metaFrEn:"français → anglais", metaDict:"dictée — écoute et écris",
+  replay:"🔊 Réécouter",
+  alsoPrompt:"aussi : ",
+  phTarget:"ta réponse en français…", phEn:"your answer in English…",
+  check:"Vérifier", next:"Suivant →",
+  exact:"Exact.", accentTier:"Bien — mais attention aux accents.",
+  artTier:"Le mot est bon — vérifie l'article.",
+  artWrong:"L'article n'est pas le bon — le genre compte comme de la grammaire.",
+  typoTier:"Presque — vérifie l'orthographe.", wrong:"Non.",
+  enTypo:"Bien — petite faute d'orthographe.",
+  altNote:v=>["Ta réponse « ",v," » figure aussi dans tes listes pour ce sens — les deux comptent."],
+  sibNote:"Aussi dans tes listes pour ce sens : ",
+  sessDone:"Session terminée", qs:"questions", right:"réussies", prec:"précision",
+  toReview:"À revoir", cont:"Continuer", seeProgress:"Voir mon suivi",
+  leechTitle:"Mots rebelles", leechCard:n=>`${n} mot${n>1?"s":""} rebelle${n>1?"s":""} — ratés encore et encore`,
+  leechGo:"Les dompter →", leechLabel:"Rebelles",
+  examTab:"Épreuve", examTitle:"Mode épreuve",
+  examLede:"Des questions au hasard dans les unités choisies, sens mixte, aucune correction avant la fin — comme en vraie épreuve. Le résultat est enregistré dans ton code.",
+  examUnits:"Unités de l'épreuve", examStart:"Commencer l'épreuve",
+  examNeedUnits:"Choisis au moins une unité.",
+  examDone:"Épreuve terminée", examScore:"note", examWrong:"Réponses incorrectes",
+  examGiven:"ta réponse", examNone:"(vide)", examAgain:"Nouvelle épreuve",
+  taskTitle:"Tâche de la semaine", taskDone:"faite ✓", taskPending:"à faire",
+  progressTitle:"Suivi",
+  progressLede:"Ta progression par unité, tes leçons les plus fragiles et ton code à envoyer au professeur.",
+  kSeen:"mots vus / ", kMast:"maîtrisés (≥ 3 sem.)", kDue:"révisions dues",
+  kProd:"précision production", kRec:"précision reconnaissance",
+  byUnit:"Par unité",
+  thUnit:"Unité", thSeen:"Vus", thMast:"Maîtrisés", thAcc:"Précision",
+  weakLessons:"Leçons à retravailler",
+  weakEmpty:"Pas encore assez de données — entraîne-toi sur quelques leçons.",
+  weakLine:(u,n)=>`${u} · Leçon ${n}`,
+  examsHist:"Tes épreuves",
+  sendTitle:"Envoyer au professeur",
+  sendFormsTxt:"Clique sur « Envoyer via MS Forms » : le formulaire s'ouvre avec ton nom et ton code déjà remplis — tu n'as plus qu'à appuyer sur Envoyer. Le code ne contient que tes statistiques et le nom saisi à l'accueil.",
+  sendCopyTxt:"Copie ce code et transmets-le à ton professeur (e-mail, Teams…). Il ne contient que tes statistiques et le nom saisi à l'accueil.",
+  sendForms:"Envoyer via MS Forms", copyCode:"Copier le code",
+  backup:"Sauvegarde complète (.json)", restore:"Restaurer une sauvegarde", reset:"Réinitialiser",
+  resetConfirm:"Effacer toute la progression sur cet appareil ? Cette action est définitive.",
+  restored:"Sauvegarde restaurée.", badFile:"Fichier non reconnu — choisis une sauvegarde exportée depuis ce site.",
+  noName:"(sans nom)",
+  backupFile:"lexique-sauvegarde.json",
+  sessionLabel:(u,n)=>`${u} · Leçon ${n}`, reviewLabel:"Révision", examLabel:"Épreuve"
+};
+/*T-END*/
+
+/* ───────── state & migration ───────── */
+const DAY=86400000;
 let S=load();
 function load(){
-  try{ const r=localStorage.getItem(LS); if(r){ const s=JSON.parse(r); s.srs=s.srs||{}; s.sessions=s.sessions||[]; return s; } }catch(e){}
-  return {name:"", srs:{}, sessions:[], created:Date.now()};
+  let s=null;
+  try{ const r=localStorage.getItem(CFG.ls); if(r) s=JSON.parse(r); }catch(e){}
+  if(!s) s={name:"",srs:{},sessions:[],exams:[],created:Date.now(),v:3};
+  s.srs=s.srs||{}; s.sessions=s.sessions||[]; s.exams=s.exams||[];
+  if(!s.v||s.v<3){ // split legacy per-entry records into production/recognition
+    const old=s.srs; s.srs={};
+    Object.keys(old).forEach(id=>{
+      if(id.indexOf("|")>=0){ s.srs[id]=old[id]; return; }
+      s.srs[id+"|f"]=JSON.parse(JSON.stringify(old[id]));
+      s.srs[id+"|r"]=JSON.parse(JSON.stringify(old[id]));
+    });
+    s.v=3;
+  }
+  return s;
 }
-function save(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function save(){ try{ localStorage.setItem(CFG.ls, JSON.stringify(S)); }catch(e){} }
 
 /* ───────── indexes ───────── */
+const K=CFG.key;
 const byId={}; CORPUS.forEach(e=>byId[e.id]=e);
 const UNITS={}, UNIT_ORDER=[];
 CORPUS.forEach(e=>{
@@ -36,39 +129,12 @@ CORPUS.forEach(e=>{
   u.lessons[e.lesson].ids.push(e.id);
 });
 
-/* ───────── cross-acceptance indexes ─────────
-   Weak-point fix: many lists teach several French words for one English gloss
-   (l'Hexagone / la métropole), and several tenses share one gloss
-   (a occupé / ont occupé = "occupied"). Any list-sanctioned answer counts. */
-function xLexkey(s){
-  s=s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"");
-  s=s.replace(/^(le |la |les |l'|un |une |des )/,"");
-  s=s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/œ/g,"oe").replace(/-/g," ");
-  return s.replace(/\s+/g," ").trim();
-}
-function xCanonEn(s){
-  s=s.toLowerCase().replace(/’/g,"'").replace(/-/g," ").replace(/\s*\([^)]*\)/g,"");
-  s=s.replace(/^(the |a |an |to )/,"").replace(/\.{3}$/,"");
-  return s.replace(/\s+/g," ").trim();
-}
-const GLOSS_TO_ENTRIES={};   // canonical EN gloss -> entries carrying it (global)
-const LEX_TO_GLOSSES={};     // French lexkey -> union of EN glosses across duplicate entries
-CORPUS.forEach(e=>{
-  e.en.forEach(g=>{
-    const cg=xCanonEn(g);
-    (GLOSS_TO_ENTRIES[cg]=GLOSS_TO_ENTRIES[cg]||[]).push(e);
-  });
-  e.fr.forEach(f=>{
-    const lk=xLexkey(f);
-    const set=(LEX_TO_GLOSSES[lk]=LEX_TO_GLOSSES[lk]||new Set());
-    e.en.forEach(g=>set.add(g));
-  });
-});
-
-/* ───────── SM-2 ───────── */
-function srsGet(id){ return S.srs[id]||(S.srs[id]={ef:2.5,int:0,reps:0,due:0,seen:0,ok:0,lapses:0}); }
-function srsGrade(id,q){
-  const r=srsGet(id);
+/* ───────── SM-2, direction-split ─────────
+   rec key = `${id}|f` production (EN → target)  ·  `${id}|r` recognition (target → EN) */
+function rk(id,dir){ return id+"|"+(dir==="fren"?"r":"f"); }  // dict & enfr grade production
+function srsGet(k){ return S.srs[k]||(S.srs[k]={ef:2.5,int:0,reps:0,due:0,seen:0,ok:0,lapses:0}); }
+function srsGrade(id,dir,q){
+  const r=srsGet(rk(id,dir));
   r.seen++; if(q>=3)r.ok++;
   if(q<3){ r.reps=0; r.int=0; r.lapses++; r.due=Date.now(); }
   else{ r.reps++;
@@ -78,19 +144,37 @@ function srsGrade(id,q){
   }
   save();
 }
-const isSeen=id=>{const r=S.srs[id];return r&&r.seen>0};
-const isDue=id=>{const r=S.srs[id];return r&&r.seen>0&&r.due<=Date.now()};
-const isMastered=id=>{const r=S.srs[id];return r&&r.int>=21};
+const recOf=(id,d)=>S.srs[id+"|"+d];
+const isSeen=id=>{const f=recOf(id,"f"),r=recOf(id,"r");return (f&&f.seen>0)||(r&&r.seen>0)};
+const isMastered=id=>{const f=recOf(id,"f");return f&&f.int>=21};          // production is the exam skill
+function dueDirs(id){
+  const out=[]; const f=recOf(id,"f"), r=recOf(id,"r");
+  if(f&&f.seen>0&&f.due<=Date.now()) out.push("enfr");
+  if(r&&r.seen>0&&r.due<=Date.now()) out.push("fren");
+  return out;
+}
+const isDue=id=>dueDirs(id).length>0;
+function leeches(){
+  const out=[];
+  Object.keys(S.srs).forEach(k=>{
+    const r=S.srs[k];
+    if(r.lapses>=3 && r.int<21){
+      const [id,d]=k.split("|");
+      if(byId[id]) out.push({id, dir:d==="r"?"fren":"enfr", lapses:r.lapses});
+    }
+  });
+  return out.sort((a,b)=>b.lapses-a.lapses);
+}
 
 /* ───────── utils ───────── */
 const $=s=>document.querySelector(s);
 function el(tag,attrs,...kids){
   const n=document.createElement(tag);
-  if(attrs)for(const k in attrs){
-    if(k==="class")n.className=attrs[k];
-    else if(k==="html")n.innerHTML=attrs[k];
-    else if(k.startsWith("on"))n.addEventListener(k.slice(2),attrs[k]);
-    else n.setAttribute(k,attrs[k]);
+  if(attrs)for(const k2 in attrs){
+    if(k2==="class")n.className=attrs[k2];
+    else if(k2==="html")n.innerHTML=attrs[k2];
+    else if(k2.startsWith("on"))n.addEventListener(k2.slice(2),attrs[k2]);
+    else n.setAttribute(k2,attrs[k2]);
   }
   kids.flat().forEach(c=>{ if(c==null)return; n.append(c.nodeType?c:document.createTextNode(c)); });
   return n;
@@ -98,9 +182,9 @@ function el(tag,attrs,...kids){
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function pct(a,b){return b?Math.round(100*a/b):0}
 function stripAcc(s){return s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/œ/g,"oe").replace(/æ/g,"ae")}
-function normFr(s){return s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/\s+/g," ").trim()}
-function stripArt(s){return s.replace(/^(le |la |les |l'|un |une |des )/,"")}
-function normEn(s){return s.toLowerCase().replace(/’/g,"'").replace(/-/g," ").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[!?.]+$/,"").replace(/\s+/g," ").trim()}
+function normFr(s){return s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[¡!¿?]/g,"").replace(/\s+/g," ").trim()}
+function stripArt(s){return s.replace(CFG.artRe,"")}
+function normEn(s){return s.toLowerCase().replace(/’/g,"'").replace(/-/g," ").replace(/(\w)iz(e[sdr]?|ing|ation)\b/g,"$1is$2").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[!?.]+$/,"").replace(/\s+/g," ").trim()}
 function stripEnLead(s){return s.replace(/^(the |a |an |to )/,"")}
 function levDist(a,b,max){
   if(a===b)return 0;
@@ -117,105 +201,121 @@ function levDist(a,b,max){
   }
   return prev[b.length];
 }
-function nearMiss(a,b){ // grammar-safe typo tolerance
-  // Edits only tolerated MID-WORD: the final two characters of every word must
-  // match exactly, because Spanish/French grammar (gender, number, verb endings)
-  // lives in the suffix. Same word count required.
+function nearMiss(a,b){ // grammar-safe: suffix zone (last 2 chars of each word) must match exactly
   const ta=a.split(" "), tb=b.split(" ");
   if(ta.length!==tb.length) return false;
   const phraseTol=Math.max(a.length,b.length)>=12?2:1;
   let edits=0;
-  for(let k=0;k<ta.length;k++){
-    const wa=ta[k], wb=tb[k];
+  for(let i=0;i<ta.length;i++){
+    const wa=ta[i], wb=tb[i];
     if(wa===wb) continue;
-    if(Math.max(wa.length,wb.length)<5) return false;          // short words: exact only
-    if(wa.slice(-2)!==wb.slice(-2)) return false;              // suffix zone protected
+    if(Math.max(wa.length,wb.length)<5) return false;
+    if(wa.slice(-2)!==wb.slice(-2)) return false;
     const d=levDist(wa.slice(0,-2), wb.slice(0,-2), 2);
     if(d>2) return false;
-    edits+=d;
-    if(edits>phraseTol) return false;
+    edits+=d; if(edits>phraseTol) return false;
   }
   return edits>0 && edits<=phraseTol;
 }
 
-
-/* real-word guard: every accent/article-stripped form in the lists */
+/* ───────── cross-acceptance indexes ───────── */
+function xLexkey(s){
+  s=s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"");
+  s=s.replace(CFG.artRe,"");
+  s=s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/œ/g,"oe").replace(/-/g," ");
+  return s.replace(/\s+/g," ").trim();
+}
+function xCanonEn(s){
+  s=s.toLowerCase().replace(/’/g,"'").replace(/-/g," ").replace(/\s*\([^)]*\)/g,"");
+  s=s.replace(/^(the |a |an |to )/,"").replace(/\.{3}$/,"");
+  return s.replace(/\s+/g," ").trim();
+}
+const GLOSS_TO_ENTRIES={}, LEX_TO_GLOSSES={};
+CORPUS.forEach(e=>{
+  e.en.forEach(g=>{const c=xCanonEn(g);(GLOSS_TO_ENTRIES[c]=GLOSS_TO_ENTRIES[c]||[]).push(e)});
+  e[K].forEach(f=>{const lk=xLexkey(f);const set=(LEX_TO_GLOSSES[lk]=LEX_TO_GLOSSES[lk]||new Set());e.en.forEach(g=>set.add(g))});
+});
 const ANSWER_FORMS=new Set();
-CORPUS.forEach(e=>e.fr.forEach(v=>ANSWER_FORMS.add(stripAcc(stripArt(normFr(v))))));
+CORPUS.forEach(e=>e[K].forEach(v=>ANSWER_FORMS.add(stripAcc(stripArt(normFr(v))))));
 
-/* answer checking — returns {q, msg, cls[, alt]} */
+/* ───────── answer checking ───────── */
 function frTiers(raw, variants, allowFuzzy){
   const vars=variants.map(normFr);
-  if(vars.includes(raw)) return {q:5,msg:"Exact.",cls:"good"};
-  if(vars.map(stripAcc).includes(stripAcc(raw))) return {q:4,msg:"Bien — mais attention aux accents.",cls:"good"};
+  if(vars.includes(raw)) return {q:5,msg:T.exact,cls:"good"};
+  if(vars.map(stripAcc).includes(stripAcc(raw))) return {q:4,msg:T.accentTier,cls:"good"};
   const rawHasArt = raw!==stripArt(raw);
   if(vars.map(v=>stripArt(v)).includes(stripArt(raw))||vars.map(v=>stripAcc(stripArt(v))).includes(stripAcc(stripArt(raw)))){
     const target=variants.map(normFr).find(v=>stripAcc(stripArt(v))===stripAcc(stripArt(raw)));
     const varHasArt = target && target!==stripArt(target);
     if(rawHasArt && varHasArt){
-      const ra=raw.match(/^(le |la |les |l'|un |une |des )/)[0], va=target.match(/^(le |la |les |l'|un |une |des )/)[0];
-      if(ra!==va) return {q:1,msg:"L\u2019article n\u2019est pas le bon \u2014 le genre compte comme de la grammaire.",cls:"bad"};
+      const ra=raw.match(CFG.artRe)[0], va=target.match(CFG.artRe)[0];
+      if(ra!==va) return {q:1,msg:T.artWrong,cls:"bad"};
     }
-    if(rawHasArt && !varHasArt) return {q:5,msg:"Exact.",cls:"good"};
-    return {q:3,msg:"Le mot est bon — vérifie l'article.",cls:"good"};
+    if(rawHasArt && !varHasArt) return {q:5,msg:T.exact,cls:"good"};
+    return {q:3,msg:T.artTier,cls:"good"};
   }
   if(allowFuzzy && vars.some(v=>nearMiss(stripAcc(stripArt(v)),stripAcc(stripArt(raw)))))
-    return {q:3,msg:"Presque — vérifie l'orthographe.",cls:"good"};
+    return {q:3,msg:T.typoTier,cls:"good"};
   return null;
 }
 function checkFr(ans, entry, promptedGloss){
   const raw=normFr(ans); if(!raw)return null;
   const rawForm=stripAcc(stripArt(raw));
-  const own=frTiers(raw, entry.fr, false);
+  const own=frTiers(raw, entry[K], false);
   if(own) return own;
-  // cross-acceptance: any entry in the lists sharing the prompted gloss
   const sibs=(GLOSS_TO_ENTRIES[xCanonEn(promptedGloss||entry.en[0])]||[]).filter(x=>x.id!==entry.id);
   for(const s of sibs){
-    const hit=frTiers(raw, s.fr, false);
+    const hit=frTiers(raw, s[K], false);
     if(hit) return {...hit, alt:s};
   }
-  // fuzzy pass only if the answer is not itself a different word from the lists
-  const inPool=[entry].concat(sibs).some(x=>x.fr.some(v=>stripAcc(stripArt(normFr(v)))===rawForm));
+  const inPool=[entry].concat(sibs).some(x=>x[K].some(v=>stripAcc(stripArt(normFr(v)))===rawForm));
   const allowFuzzy=inPool || !ANSWER_FORMS.has(rawForm);
   if(allowFuzzy){
-    const own2=frTiers(raw, entry.fr, true);
+    const own2=frTiers(raw, entry[K], true);
     if(own2) return own2;
     for(const s of sibs){
-      const hit=frTiers(raw, s.fr, true);
+      const hit=frTiers(raw, s[K], true);
       if(hit) return {...hit, alt:s};
     }
   }
-  return {q:1,msg:"Non.",cls:"bad"};
+  return {q:1,msg:T.wrong,cls:"bad"};
 }
 function checkEn(ans, entry){
   const raw=normEn(ans); if(!raw)return null;
-  // union of glosses across every duplicate of this lexeme in the corpus
   const pool=new Set(entry.en);
-  entry.fr.forEach(f=>{
-    const s=LEX_TO_GLOSSES[xLexkey(f)];
-    if(s)s.forEach(g=>pool.add(g));
-  });
+  entry[K].forEach(f=>{const s=LEX_TO_GLOSSES[xLexkey(f)]; if(s)s.forEach(g=>pool.add(g))});
   const vars=[...pool].map(normEn);
   if(vars.includes(raw)||vars.map(stripEnLead).includes(stripEnLead(raw)))
-    return {q:5,msg:"Exact.",cls:"good"};
+    return {q:5,msg:T.exact,cls:"good"};
   if(vars.some(v=>nearMiss(stripEnLead(v),stripEnLead(raw))))
-    return {q:4,msg:"Bien — petite faute d'orthographe.",cls:"good"};
-  return {q:1,msg:"Non.",cls:"bad"};
+    return {q:4,msg:T.enTypo,cls:"good"};
+  return {q:1,msg:T.wrong,cls:"bad"};
 }
 
-/* ───────── accent pad ─────────
-   Only the characters that actually occur in the French lists. */
-const ACCENTS=["é","è","à","ê","ç","ô","î","œ","ï","â","û","ë","ù"];
+/* ───────── TTS ───────── */
+const ttsOK="speechSynthesis" in window;
+function speak(txt){
+  if(!ttsOK)return;
+  const u=new SpeechSynthesisUtterance(String(txt).replace(/\s*\([^)]*\)/g,"").replace(/;.*/,""));
+  u.lang=CFG.ttsLang; u.rate=0.88;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function speakBtn(txt,small){
+  if(!ttsOK)return null;
+  return el("button",{class:"speak"+(small?" small":""),type:"button",title:"🔊","aria-label":"🔊",
+    onclick:ev=>{ev.stopPropagation();speak(txt)}},"🔊");
+}
+
+/* ───────── accent pad ───────── */
 let padTarget=null;
 const pad=(function(){
-  const p=el("div",{class:"accent-pad hidden",role:"toolbar","aria-label":"Accents français"});
-  ACCENTS.forEach(ch=>{
+  const p=el("div",{class:"accent-pad hidden",role:"toolbar","aria-label":T.padLabel});
+  CFG.accents.forEach(ch=>{
     const b=el("button",{type:"button",tabindex:"-1"},ch);
-    b.addEventListener("mousedown",ev=>ev.preventDefault()); // keep input focus
+    b.addEventListener("mousedown",ev=>ev.preventDefault());
     b.addEventListener("click",()=>{
       if(!padTarget)return;
-      const st=padTarget.selectionStart??padTarget.value.length,
-            en=padTarget.selectionEnd??padTarget.value.length;
+      const st=padTarget.selectionStart??padTarget.value.length, en=padTarget.selectionEnd??padTarget.value.length;
       padTarget.setRangeText(ch,st,en,"end");
       padTarget.dispatchEvent(new Event("input",{bubbles:true}));
       padTarget.focus();
@@ -225,11 +325,11 @@ const pad=(function(){
   document.body.append(p);
   return p;
 })();
-function showPad(input){ padTarget=input; pad.classList.remove("hidden"); document.body.classList.add("pad-on"); }
+function showPad(i){ padTarget=i; pad.classList.remove("hidden"); document.body.classList.add("pad-on"); }
 function hidePad(){ padTarget=null; pad.classList.add("hidden"); document.body.classList.remove("pad-on"); }
 
 /* ───────── router ───────── */
-const VIEWS=["accueil","revision","suivi"];
+const VIEWS=["accueil","revision","examen","suivi"];
 function go(v){
   hidePad();
   VIEWS.forEach(x=>{
@@ -238,6 +338,7 @@ function go(v){
   });
   if(v==="accueil")renderAccueil();
   if(v==="revision")renderRevisionConfig();
+  if(v==="examen")renderExamConfig();
   if(v==="suivi")renderSuivi();
   window.scrollTo(0,0);
 }
@@ -246,30 +347,59 @@ VIEWS.forEach(v=>$("#tab-"+v).addEventListener("click",()=>go(v)));
 function kpi(n,l){return el("div",{class:"kpi"},el("div",{class:"n"},String(n)),el("div",{class:"l"},l))}
 function pills(items,current,on){
   const w=el("div",{class:"pill-select"});
-  items.forEach(([val,label])=>{
-    const b=el("button",{class:val===current?"on":"",onclick:()=>{on(val);[...w.children].forEach(c=>c.classList.remove("on"));b.classList.add("on")}},label);
+  items.forEach(([val,label,dis])=>{
+    const b=el("button",{class:val===current?"on":"",...(dis?{disabled:"",title:T.dictNoTts}:{}),
+      onclick:()=>{on(val);[...w.children].forEach(c=>c.classList.remove("on"));b.classList.add("on")}},label);
     w.append(b);
   });
   return w;
 }
 
-/* ═════════ ACCUEIL — units → lessons → liste / practice ═════════ */
+/* ───────── assignment ───────── */
+function assignment(){
+  const a=window.ASSIGNMENT;
+  if(!a||!a.label||!Array.isArray(a.lessons)||!a.lessons.length) return null;
+  const since=Date.parse(a.since||"2000-01-01");
+  const done=a.lessons.map(lid=>S.sessions.some(s=>s.lid===lid&&s.t>=since));
+  return {...a, since, done};
+}
+
+/* ═════════ ACCUEIL ═════════ */
 let openUnit=null;
 function renderAccueil(){
   const v=$("#view-accueil"); v.innerHTML="";
-  const due=Object.keys(S.srs).filter(isDue).length;
+  const dueN=CORPUS.reduce((n,e)=>n+dueDirs(e.id).length,0);
+  const lee=leeches();
+  const a=assignment();
   v.append(
-    el("h2",null,"Tes listes de vocabulaire"),
-    el("p",{class:"lede"},"Les listes reprennent exactement le classeur : choisis une unité, puis une leçon. Consulte la liste ou entraîne-toi en tapant tes réponses — dans les deux sens. Ta progression reste sur cet appareil ; exporte ton code dans Suivi pour l'envoyer au professeur."),
+    el("h2",null,T.homeTitle),
+    el("p",{class:"lede"},T.homeLede),
     el("div",{class:"card"},
-      el("label",{for:"student-name",style:"font-weight:600;font-size:.9rem"},"Ton nom (pour le code exporté)"),
-      el("input",{id:"student-name",class:"typed",style:"margin-top:8px",value:S.name||"",placeholder:"Prénom + initiale, ex. Sophie K.",
-        oninput:e=>{S.name=e.target.value.trim();save()}})),
-    due? el("div",{class:"card",style:"margin-top:14px;border-color:var(--rouge)"},
-      el("h3",null,due+" mot"+(due>1?"s":"")+" à réviser aujourd'hui"),
-      el("div",{class:"btn-row"},el("button",{class:"btn primary",onclick:()=>go("revision")},"Lancer la révision →"))):null,
-    el("div",{class:"section-label"},"Unités")
-  );
+      el("label",{for:"student-name",style:"font-weight:600;font-size:.9rem"},T.nameLabel),
+      el("input",{id:"student-name",class:"typed",style:"margin-top:8px",value:S.name||"",placeholder:T.namePh,
+        oninput:e=>{S.name=e.target.value.trim();save()}})));
+  if(a){
+    const card=el("div",{class:"card",style:"margin-top:14px;border-color:var(--bleu)"},
+      el("h3",null,T.taskTitle+" — "+a.label));
+    a.lessons.forEach((lid,i)=>{
+      const [uid]=lid.split(".");
+      const L=UNITS[uid]&&UNITS[uid].lessons[lid];
+      if(!L)return;
+      card.append(el("div",{style:"display:flex;gap:10px;align-items:center;padding:4px 0"},
+        el("span",{style:"flex:1"},T.lessonLine(lid.split(".")[1],L.title,L.ids.length)),
+        el("span",{class:"session-count",style:a.done[i]?"color:var(--vert)":"color:var(--rouge)"},a.done[i]?T.taskDone:T.taskPending),
+        el("button",{class:"btn small primary",onclick:()=>startLesson(uid,lid)},T.practise)));
+    });
+    v.append(card);
+  }
+  if(dueN) v.append(el("div",{class:"card",style:"margin-top:14px;border-color:var(--rouge)"},
+    el("h3",null,T.dueCard(dueN)),
+    el("div",{class:"btn-row"},el("button",{class:"btn primary",onclick:()=>go("revision")},T.startReview))));
+  if(lee.length) v.append(el("div",{class:"card",style:"margin-top:14px;border-color:#B07B12"},
+    el("h3",null,T.leechTitle+" ("+lee.length+")"),
+    el("p",{style:"margin:4px 0 0;color:var(--ink-soft);font-size:.9rem"},T.leechCard(lee.length)),
+    el("div",{class:"btn-row"},el("button",{class:"btn",onclick:startLeech},T.leechGo))));
+  v.append(el("div",{class:"section-label"},T.unitsLabel));
   UNIT_ORDER.forEach(uid=>{
     const u=UNITS[uid];
     const mast=u.ids.filter(isMastered).length, seen=u.ids.filter(isSeen).length;
@@ -277,7 +407,7 @@ function renderAccueil(){
       el("div",{style:"flex:1"},
         el("div",{class:"u-code"},uid+(openUnit===uid?" ▾":" ▸")),
         el("div",{class:"u-name"},u.name),
-        el("div",{class:"u-meta"},`${u.lessonOrder.length} leçons · ${u.ids.length} mots · ${seen} vus · ${mast} maîtrisés`),
+        el("div",{class:"u-meta"},T.unitMeta(u.lessonOrder.length,u.ids.length,seen,mast)),
         el("div",{class:"u-bar"},el("i",{style:"width:"+pct(mast,u.ids.length)+"%"}))));
     v.append(head);
     if(openUnit===uid){
@@ -285,131 +415,180 @@ function renderAccueil(){
       u.lessonOrder.forEach(lid=>{
         const L=u.lessons[lid];
         const n=L.ids.length, m=L.ids.filter(isMastered).length, s=L.ids.filter(isSeen).length;
-        let a=0,c=0; L.ids.forEach(id=>{const r=S.srs[id];if(r){a+=r.seen;c+=r.ok}});
+        let a2=0,c2=0; L.ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){a2+=r.seen;c2+=r.ok}}));
         wrap.append(el("div",{class:"card",style:"display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px"},
           el("div",{style:"flex:1;min-width:220px"},
-            el("div",{style:"font-weight:600"},`Leçon ${lid.split(".")[1]} — ${L.title} (${n} mots)`),
-            el("div",{class:"u-meta"},`${s} vus · ${m} maîtrisés`+(a?` · ${pct(c,a)} % de précision`:"")),
+            el("div",{style:"font-weight:600"},T.lessonLine(lid.split(".")[1],L.title,n)),
+            el("div",{class:"u-meta"},T.lessonMeta(s,m)+(a2?` · ${pct(c2,a2)}${T.accSuffix}`:"")),
             el("div",{class:"u-bar",style:"max-width:220px"},el("i",{style:"width:"+pct(m,n)+"%"}))),
           el("div",{class:"btn-row",style:"margin:0"},
-            el("button",{class:"btn small ghost",onclick:()=>renderListe(uid,lid)},"Liste"),
-            el("button",{class:"btn small primary",onclick:()=>startLesson(uid,lid)},"S'entraîner"))));
+            el("button",{class:"btn small ghost",onclick:()=>renderListe(uid,lid)},T.list),
+            el("button",{class:"btn small primary",onclick:()=>startLesson(uid,lid)},T.practise))));
       });
       v.append(wrap);
     }
   });
 }
 
-/* — liste view: mirrors the workbook table — */
+/* — liste (printable) — */
 function renderListe(uid,lid){
   const v=$("#view-accueil"); v.innerHTML="";
   const u=UNITS[uid], L=u.lessons[lid];
   v.append(
-    el("div",{class:"session-bar"},
-      el("button",{class:"btn small ghost",onclick:renderAccueil},"← Retour aux unités"),
-      el("button",{class:"btn small primary",style:"margin-left:auto",onclick:()=>startLesson(uid,lid)},"S'entraîner sur cette liste")),
-    el("h2",null,`${uid} ${u.name} · Leçon ${lid.split(".")[1]} — ${L.title} (${L.ids.length} mots)`));
+    el("div",{class:"session-bar no-print"},
+      el("button",{class:"btn small ghost",onclick:renderAccueil},T.backUnits),
+      el("button",{class:"btn small ghost",style:"margin-left:auto",onclick:()=>window.print()},T.print),
+      el("button",{class:"btn small primary",onclick:()=>startLesson(uid,lid)},T.practiseThis)),
+    el("h2",null,`${uid} ${u.name} · `+T.lessonLine(lid.split(".")[1],L.title,L.ids.length)));
   const tbl=el("table",{class:"stats"},
-    el("thead",null,el("tr",null,el("th",null,"Français"),el("th",null,"English"),el("th",{style:"width:70px"},"Statut"))));
+    el("thead",null,el("tr",null,el("th",null,T.colTarget),el("th",null,T.colEn),el("th",{class:"no-print",style:"width:70px"},T.colStatus))));
   const tb=el("tbody");
   L.ids.forEach(id=>{
-    const e=byId[id], r=S.srs[id];
+    const e=byId[id];
     const st=isMastered(id)?"●":isSeen(id)?"◐":"○";
-    const stTitle=isMastered(id)?"maîtrisé":isSeen(id)?"en cours":"pas encore vu";
+    const stTitle=isMastered(id)?T.stMast:isSeen(id)?T.stCur:T.stNew;
     tb.append(el("tr",null,
-      el("td",null,el("b",null,e.fr.join(" ; "))),
+      el("td",null,el("b",null,e[K].join(" ; "))," ",speakBtn(e[K][0],true)),
       el("td",null,e.en.join(" ; ")),
-      el("td",{class:"num",title:stTitle,style:"color:"+(isMastered(id)?"var(--vert)":isSeen(id)?"var(--bleu)":"var(--muted)")},st)));
+      el("td",{class:"num no-print",title:stTitle,style:"color:"+(isMastered(id)?"var(--vert)":isSeen(id)?"var(--bleu)":"var(--muted)")},st)));
   });
   tbl.append(tb);
-  v.append(tbl,
-    el("p",{style:"font-size:.82rem;color:var(--muted);margin-top:10px"},"○ pas encore vu · ◐ en cours · ● maîtrisé (intervalle ≥ 3 semaines). Les formes séparées par « ; » sont interchangeables : n'importe laquelle compte juste."));
+  v.append(tbl, el("p",{class:"no-print",style:"font-size:.82rem;color:var(--muted);margin-top:10px"},T.listLegend));
 }
 
-/* ═════════ SESSIONS (typed only) ═════════ */
-let sess=null;
-let lessonPrefs={dir:"mixte"};
+/* ═════════ SESSIONS ═════════ */
+let sess=null, lessonPrefs={dir:"mixte"}, revLen=20;
 function startLesson(uid,lid){
+  go("accueil");
   const v=$("#view-accueil"); v.innerHTML="";
   const u=UNITS[uid], L=u.lessons[lid];
   v.append(
-    el("div",{class:"session-bar"},el("button",{class:"btn small ghost",onclick:renderAccueil},"← Retour")),
-    el("h2",null,`Leçon ${lid.split(".")[1]} — ${L.title} (${L.ids.length} mots)`),
+    el("div",{class:"session-bar"},el("button",{class:"btn small ghost",onclick:renderAccueil},T.back)),
+    el("h2",null,T.lessonLine(lid.split(".")[1],L.title,L.ids.length)),
     el("div",{class:"card"},
-      el("h3",null,"Sens de traduction"),
-      pills([["enfr","Anglais → Français"],["fren","Français → Anglais"],["mixte","Mixte"]],lessonPrefs.dir,d=>lessonPrefs.dir=d),
+      el("h3",null,T.dirLabel),
+      pills([["enfr",T.dirEnFr],["fren",T.dirFrEn],["mixte",T.dirMix],["dict",T.dirDict,!ttsOK]],lessonPrefs.dir,d=>lessonPrefs.dir=d),
       el("div",{class:"btn-row"},
         el("button",{class:"btn primary",onclick:()=>{
           const ids=shuffle(L.ids);
-          sess={queue:ids.map((id,i)=>({id,dir:lessonPrefs.dir==="mixte"?(i%2?"fren":"enfr"):lessonPrefs.dir})),
-                i:0,ok:0,wrong:[],back:renderAccueil,label:`${uid} · Leçon ${lid.split(".")[1]}`,view:"#view-accueil"};
+          const q=ids.map((id,i)=>({id,dir:lessonPrefs.dir==="mixte"?(i%2?"fren":"enfr"):lessonPrefs.dir}));
+          sess={queue:q,i:0,ok:0,wrong:[],back:renderAccueil,label:T.sessionLabel(uid,lid.split(".")[1]),view:"#view-accueil",lid,silent:false};
           renderQ();
-        }},"Commencer — toute la leçon"))));
+        }},T.startLesson))));
 }
-
+function startLeech(){
+  const q=leeches().slice(0,20).map(l=>({id:l.id,dir:l.dir}));
+  if(!q.length)return;
+  sess={queue:shuffle(q),i:0,ok:0,wrong:[],back:renderAccueil,label:T.leechLabel,view:"#view-accueil",lid:"leech",silent:false};
+  go("accueil"); renderQ();
+}
 function renderRevisionConfig(){
   const v=$("#view-revision"); v.innerHTML="";
-  const due=shuffle(Object.keys(S.srs).filter(isDue));
+  // production first, then recognition
+  const dueF=[],dueR=[];
+  CORPUS.forEach(e=>{const d=dueDirs(e.id); if(d.includes("enfr"))dueF.push({id:e.id,dir:"enfr"}); if(d.includes("fren"))dueR.push({id:e.id,dir:"fren"})});
+  const due=shuffle(dueF).concat(shuffle(dueR));
   v.append(
-    el("h2",null,"Révision du jour"),
-    el("p",{class:"lede"},due.length?
-      `${due.length} mot${due.length>1?"s":""} arrivent à échéance (toutes unités confondues). La répétition espacée choisit pour toi.`:
-      "Rien à réviser pour l'instant — entraîne-toi sur une leçon depuis l'accueil, et les mots reviendront ici au bon moment."),
+    el("h2",null,T.reviewTitle),
+    el("p",{class:"lede"},due.length?T.reviewLede(due.length):T.reviewEmpty),
     due.length? el("div",{class:"card"},
-      el("h3",null,"Nombre de mots"),
-      pills([["10","10"],["20","20"],["30","30"],["999","Tout"]],"20",n=>revLen=+n),
+      el("h3",null,T.nWords),
+      pills([["10","10"],["20","20"],["30","30"],["999",T.all]],"20",n=>revLen=+n),
       el("div",{class:"btn-row"},el("button",{class:"btn primary",onclick:()=>{
-        const q=due.slice(0,revLen).map((id,i)=>({id,dir:i%2?"fren":"enfr"}));
-        sess={queue:q,i:0,ok:0,wrong:[],back:renderRevisionConfig,label:"Révision",view:"#view-revision"};
+        sess={queue:due.slice(0,revLen),i:0,ok:0,wrong:[],back:renderRevisionConfig,label:T.reviewLabel,view:"#view-revision",lid:"rev",silent:false};
         renderQ();
-      }},"Commencer")) ):null
-  );
+      }},T.start))):null);
 }
-let revLen=20;
 
+/* ═════════ EXAM ═════════ */
+let examUnits=new Set(), examLen=30;
+function renderExamConfig(){
+  const v=$("#view-examen"); v.innerHTML="";
+  v.append(el("h2",null,T.examTitle), el("p",{class:"lede"},T.examLede),
+    el("div",{class:"card"}, el("h3",null,T.examUnits)));
+  const grid=el("div",{class:"pill-select",style:"margin-top:4px"});
+  UNIT_ORDER.forEach(uid=>{
+    const b=el("button",{class:examUnits.has(uid)?"on":"",onclick:()=>{
+      examUnits.has(uid)?examUnits.delete(uid):examUnits.add(uid);
+      b.classList.toggle("on");
+    }},uid);
+    grid.append(b);
+  });
+  const card=v.lastChild;
+  card.append(grid,
+    el("h3",{style:"margin-top:18px"},T.nWords),
+    pills([["20","20"],["30","30"],["50","50"]],String(examLen),n=>examLen=+n),
+    el("div",{class:"btn-row"},el("button",{class:"btn primary",onclick:()=>{
+      if(!examUnits.size){alert(T.examNeedUnits);return}
+      const ids=shuffle([...examUnits].flatMap(u=>UNITS[u]?UNITS[u].ids:[])).slice(0,examLen);
+      const q=ids.map((id,i)=>({id,dir:i%2?"fren":"enfr"}));
+      sess={queue:q,i:0,ok:0,wrong:[],back:renderExamConfig,label:T.examLabel,view:"#view-examen",lid:"exam",silent:true,answers:[]};
+      renderQ();
+    }},T.examStart)));
+}
+
+/* ═════════ question renderer (shared) ═════════ */
 function renderQ(){
   const v=$(sess.view);
   hidePad();
-  if(sess.i>=sess.queue.length)return sessionEnd(v);
+  if(sess.i>=sess.queue.length)return sess.silent?examEnd(v):sessionEnd(v);
   v.innerHTML="";
   const p=pct(sess.i,sess.queue.length);
   v.append(el("div",{class:"session-bar"},
-    el("button",{class:"btn small ghost",onclick:sess.back},"← Quitter"),
+    el("button",{class:"btn small ghost",onclick:sess.back},T.quit),
     el("div",{class:"progress"},el("i",{style:"width:"+p+"%"})),
     el("span",{class:"session-count"},`${sess.i+1} / ${sess.queue.length}`),
-    el("span",{class:"score-pill"},`✓ ${sess.ok}`)));
+    sess.silent?null:el("span",{class:"score-pill"},`✓ ${sess.ok}`)));
   const {id,dir}=sess.queue[sess.i], e=byId[id];
-  const enfr=dir==="enfr";
-  const promptTxt=enfr? e.en[0] : e.fr[0];
+  const enfr=dir==="enfr", dict=dir==="dict";
+  const hasArt=e[K].some(vv=>CFG.artRe.test(vv.toLowerCase()));
+  const meta=dict?T.metaDict:enfr?(hasArt?T.metaEnFrArt:T.metaEnFr):T.metaFrEn;
+  let promptNode;
+  if(dict){
+    promptNode=el("div",null,
+      el("button",{class:"btn primary",onclick:()=>speak(e[K][0])},T.replay));
+    setTimeout(()=>speak(e[K][0]),300);
+  } else if(enfr){
+    promptNode=el("div",{class:"headword",style:"font-family:var(--font-body);font-weight:600;font-size:1.5rem"},e.en[0]);
+  } else {
+    promptNode=el("div",{class:"headword"},e[K][0]," ",speakBtn(e[K][0]));
+  }
+  const others=(dict?[]:(enfr?e.en:e[K]).slice(1));
   const card=el("div",{class:"entry"},
-    el("div",{class:"entry-meta"},`${sess.label} · ${enfr?(e.fr.some(v=>/^(le |la |les |l'|un |une |des )/i.test(v))?"anglais → français (avec l'article)":"anglais → français"):"français → anglais"}`),
-    el("div",{class:"headword",style:enfr?"font-family:var(--font-body);font-weight:600;font-size:1.5rem":""},promptTxt),
-    (enfr?e.en:e.fr).length>1? el("div",{class:"gramm"},"aussi : "+(enfr?e.en:e.fr).slice(1).join(" ; ")):null);
+    el("div",{class:"entry-meta"},`${sess.label} · ${meta}`),
+    promptNode,
+    others.length&&!sess.silent? el("div",{class:"gramm"},T.alsoPrompt+others.join(" ; ")):null);
+  const targetLang = enfr||dict;
   const inp=el("input",{class:"typed",type:"text",autocapitalize:"off",autocomplete:"off",spellcheck:"false",
-    placeholder:enfr?"ta réponse en français…":"your answer in English…"});
+    placeholder:targetLang?T.phTarget:T.phEn});
   const row=el("div",{class:"btn-row"});
-  const check=el("button",{class:"btn primary"},"Vérifier");
+  const check=el("button",{class:"btn primary"},sess.silent?T.next:T.check);
   let done=false;
   function doCheck(){
     if(done)return;
-    const res=enfr? checkFr(inp.value,e,e.en[0]) : checkEn(inp.value,e);
-    if(!res)return;
+    const res=targetLang? checkFr(inp.value,e,e.en[0]) : checkEn(inp.value,e);
+    if(!res&&!sess.silent)return;
     done=true;
-    srsGrade(e.id,res.q);
-    if(res.q>=3)sess.ok++; else sess.wrong.push(e.id);
+    const q=res?res.q:1;
+    srsGrade(e.id, dict?"enfr":dir, q);
+    if(q>=3)sess.ok++; else sess.wrong.push(e.id);
+    if(sess.silent){
+      sess.answers.push({id:e.id,dir,given:inp.value.trim(),q});
+      sess.i++; renderQ(); return;
+    }
     inp.disabled=true; check.disabled=true;
     hidePad();
     let sibs="";
-    if(enfr && res.q<3){
-      const others=(GLOSS_TO_ENTRIES[xCanonEn(e.en[0])]||[]).filter(x=>x.id!==e.id).map(x=>x.fr[0]);
-      if(others.length) sibs=[...new Set(others)].slice(0,3).join(" · ");
+    if(targetLang && q<3){
+      const oth=(GLOSS_TO_ENTRIES[xCanonEn(e.en[0])]||[]).filter(x=>x.id!==e.id).map(x=>x[K][0]);
+      if(oth.length) sibs=[...new Set(oth)].slice(0,3).join(" · ");
     }
     card.append(
       el("div",{class:"feedback "+res.cls},res.msg,
-        sibs? el("span",{class:"note"},"Aussi dans tes listes pour ce sens : ",sibs):null,
-        res.alt? el("span",{class:"note"},"Ta réponse « ",res.alt.fr[0]," » figure aussi dans tes listes pour ce sens — les deux comptent."):null,
+        sibs? el("span",{class:"note"},T.sibNote,sibs):null,
+        res.alt? el("span",{class:"note"},...T.altNote(res.alt[K][0])):null,
         el("span",{class:"note"},
-          el("b",null,e.fr.join(" ; "))," — ",e.en.join(" ; "))),
+          el("b",null,e[K].join(" ; "))," ",speakBtn(e[K][0],true)," — ",e.en.join(" ; "))),
       nextBtn());
   }
   check.addEventListener("click",doCheck);
@@ -417,55 +596,83 @@ function renderQ(){
   row.append(check);
   card.append(inp,row);
   v.append(card);
-  if(enfr) showPad(inp);
+  if(targetLang) showPad(inp);
   setTimeout(()=>inp.focus(),50);
 }
 function nextBtn(){
-  const b=el("button",{class:"btn primary",onclick:()=>{sess.i++;renderQ()}},"Suivant →");
+  const b=el("button",{class:"btn primary",onclick:()=>{sess.i++;renderQ()}},T.next);
   setTimeout(()=>b.focus(),50);
   return el("div",{class:"btn-row"},b);
 }
 function sessionEnd(v){
   hidePad();
   v.innerHTML="";
-  S.sessions.push({t:Date.now(),n:sess.queue.length,ok:sess.ok,label:sess.label});save();
+  S.sessions.push({t:Date.now(),n:sess.queue.length,ok:sess.ok,label:sess.label,lid:sess.lid});save();
   v.append(
-    el("h2",null,"Session terminée"),
+    el("h2",null,T.sessDone),
     el("div",{class:"kpi-row"},
-      kpi(sess.queue.length,"questions"),
-      kpi(sess.ok,"réussies"),
-      kpi(pct(sess.ok,sess.queue.length)+" %","précision")),
+      kpi(sess.queue.length,T.qs), kpi(sess.ok,T.right), kpi(pct(sess.ok,sess.queue.length)+" %",T.prec)),
     sess.wrong.length? el("div",{class:"card"},
-      el("h3",null,"À revoir"),
+      el("h3",null,T.toReview),
       el("div",{style:"margin-top:8px"},
-        sess.wrong.map(id=>el("div",{style:"padding:4px 0;border-bottom:1px solid var(--line)"},
-          el("b",null,byId[id].fr.join(" ; "))," — ",byId[id].en.join(" ; "))))):null,
+        [...new Set(sess.wrong)].map(id=>el("div",{style:"padding:4px 0;border-bottom:1px solid var(--line)"},
+          el("b",null,byId[id][K].join(" ; "))," ",speakBtn(byId[id][K][0],true)," — ",byId[id].en.join(" ; "))))):null,
     el("div",{class:"btn-row"},
-      el("button",{class:"btn primary",onclick:sess.back},"Continuer"),
-      el("button",{class:"btn",onclick:()=>go("suivi")},"Voir mon suivi")));
+      el("button",{class:"btn primary",onclick:sess.back},T.cont),
+      el("button",{class:"btn",onclick:()=>go("suivi")},T.seeProgress)));
+}
+function examEnd(v){
+  hidePad(); v.innerHTML="";
+  const p=pct(sess.ok,sess.queue.length);
+  S.exams.push({t:Date.now(),units:[...examUnits],n:sess.queue.length,ok:sess.ok,pct:p});
+  S.sessions.push({t:Date.now(),n:sess.queue.length,ok:sess.ok,label:T.examLabel,lid:"exam"});save();
+  v.append(
+    el("h2",null,T.examDone),
+    el("div",{class:"kpi-row"},
+      kpi(sess.queue.length,T.qs), kpi(sess.ok,T.right), kpi(p+" %",T.examScore)));
+  const wrongs=sess.answers.filter(a=>a.q<3);
+  if(wrongs.length){
+    const card=el("div",{class:"card"},el("h3",null,T.examWrong));
+    wrongs.forEach(a=>{
+      const e=byId[a.id];
+      card.append(el("div",{style:"padding:6px 0;border-bottom:1px solid var(--line)"},
+        el("div",null,el("b",null,e[K].join(" ; "))," ",speakBtn(e[K][0],true)," — ",e.en.join(" ; ")),
+        el("div",{style:"font-size:.85rem;color:var(--rouge)"},T.examGiven+": "+(a.given||T.examNone))));
+    });
+    v.append(card);
+  }
+  v.append(el("div",{class:"btn-row"},
+    el("button",{class:"btn primary",onclick:renderExamConfig},T.examAgain),
+    el("button",{class:"btn",onclick:()=>go("suivi")},T.seeProgress)));
 }
 
 /* ═════════ SUIVI ═════════ */
 function renderSuivi(){
   const v=$("#view-suivi"); v.innerHTML="";
-  const seenIds=Object.keys(S.srs).filter(isSeen);
-  const seen=seenIds.length, mast=seenIds.filter(isMastered).length, due=seenIds.filter(isDue).length;
-  let a=0,c=0; seenIds.forEach(id=>{a+=S.srs[id].seen;c+=S.srs[id].ok});
+  const seenIds=CORPUS.map(e=>e.id).filter(isSeen);
+  const mast=seenIds.filter(isMastered).length;
+  const dueN=CORPUS.reduce((n,e)=>n+dueDirs(e.id).length,0);
+  let fa=0,fc=0,ra=0,rc=0;
+  CORPUS.forEach(e=>{
+    const f=recOf(e.id,"f"); if(f){fa+=f.seen;fc+=f.ok}
+    const r=recOf(e.id,"r"); if(r){ra+=r.seen;rc+=r.ok}
+  });
   v.append(
-    el("h2",null,"Suivi"),
-    el("p",{class:"lede"},"Ta progression par unité, tes leçons les plus fragiles, et ton code à envoyer au professeur."),
+    el("h2",null,T.progressTitle),
+    el("p",{class:"lede"},T.progressLede),
     el("div",{class:"kpi-row"},
-      kpi(seen,"mots vus / "+CORPUS.length),
-      kpi(mast,"maîtrisés (≥ 3 sem.)"),
-      kpi(due,"révisions dues"),
-      kpi(a?pct(c,a)+" %":"—","précision globale")),
-    el("div",{class:"section-label"},"Par unité"));
+      kpi(seenIds.length,T.kSeen+CORPUS.length),
+      kpi(mast,T.kMast),
+      kpi(dueN,T.kDue),
+      kpi(fa?pct(fc,fa)+" %":"—",T.kProd),
+      kpi(ra?pct(rc,ra)+" %":"—",T.kRec)),
+    el("div",{class:"section-label"},T.byUnit));
   const tbl=el("table",{class:"stats"},
-    el("thead",null,el("tr",null,el("th",null,"Unité"),el("th",null,"Vus"),el("th",null,"Maîtrisés"),el("th",null,"Précision"),el("th",null,""))));
+    el("thead",null,el("tr",null,el("th",null,T.thUnit),el("th",null,T.thSeen),el("th",null,T.thMast),el("th",null,T.thAcc),el("th",null,""))));
   const tb=el("tbody");
   UNIT_ORDER.forEach(uid=>{
     const u=UNITS[uid], s=u.ids.filter(isSeen), m=u.ids.filter(isMastered);
-    let ua=0,uc=0; s.forEach(id=>{ua+=S.srs[id].seen;uc+=S.srs[id].ok});
+    let ua=0,uc=0; u.ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){ua+=r.seen;uc+=r.ok}}));
     const acc=pct(uc,ua);
     tb.append(el("tr",null,
       el("td",null,el("b",null,uid)," ",u.name),
@@ -478,75 +685,92 @@ function renderSuivi(){
 
   /* weakest lessons */
   const rows=[];
-  UNIT_ORDER.forEach(uid=>{
-    const u=UNITS[uid];
-    u.lessonOrder.forEach(lid=>{
-      let la=0,lc=0; u.lessons[lid].ids.forEach(id=>{const r=S.srs[id];if(r){la+=r.seen;lc+=r.ok}});
-      if(la>=5)rows.push({uid,lid,title:u.lessons[lid].title,acc:pct(lc,la),n:la});
-    });
-  });
+  UNIT_ORDER.forEach(uid=>UNITS[uid].lessonOrder.forEach(lid=>{
+    let la=0,lc=0; UNITS[uid].lessons[lid].ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){la+=r.seen;lc+=r.ok}}));
+    if(la>=5)rows.push({uid,lid,title:UNITS[uid].lessons[lid].title,acc:pct(lc,la)});
+  }));
   rows.sort((x,y)=>x.acc-y.acc);
-  v.append(el("div",{class:"section-label"},"Leçons à retravailler"));
-  if(!rows.length)v.append(el("p",{style:"color:var(--muted)"},"Pas encore assez de données — entraîne-toi sur quelques leçons."));
+  v.append(el("div",{class:"section-label"},T.weakLessons));
+  if(!rows.length)v.append(el("p",{style:"color:var(--muted)"},T.weakEmpty));
   else{
     const w=el("div",{class:"card"});
     rows.slice(0,8).forEach(r=>w.append(el("div",{style:"display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)"},
-      el("div",{style:"flex:1"},el("b",null,`${r.uid} · Leçon ${r.lid.split(".")[1]}`)," — "+r.title),
+      el("div",{style:"flex:1"},el("b",null,T.weakLine(r.uid,r.lid.split(".")[1]))," — "+r.title),
       el("span",{class:"session-count"},r.acc+" %"),
-      el("button",{class:"btn small ghost",onclick:()=>{go("accueil");renderListe(r.uid,r.lid)}},"Liste"))));
+      el("button",{class:"btn small primary",onclick:()=>startLesson(r.uid,r.lid)},T.practise))));
+    v.append(w);
+  }
+
+  /* exam history */
+  if(S.exams.length){
+    v.append(el("div",{class:"section-label"},T.examsHist));
+    const w=el("div",{class:"card"});
+    S.exams.slice(-8).reverse().forEach(x=>w.append(el("div",{style:"display:flex;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)"},
+      el("span",{class:"session-count"},new Date(x.t).toLocaleDateString()),
+      el("span",{style:"flex:1"},x.units.join(", ")),
+      el("b",null,x.pct+" %"),
+      el("span",{class:"session-count"},x.ok+"/"+x.n))));
     v.append(w);
   }
 
   /* export */
   const code=buildExportCode();
   const ta=el("textarea",{class:"code",readonly:""},code);
-  v.append(el("div",{class:"section-label"},"Envoyer au professeur"),
+  v.append(el("div",{class:"section-label"},T.sendTitle),
     el("div",{class:"card"},
-      el("p",{style:"margin:0 0 10px"},FORMS_URL?
-        "Clique sur « Envoyer via MS Forms » : le formulaire s'ouvre avec ton nom et ton code déjà remplis — tu n'as plus qu'à appuyer sur Envoyer. Le code ne contient que tes statistiques et le nom saisi à l'accueil.":
-        "Copie ce code et transmets-le à ton professeur (e-mail, Teams…). Il ne contient que tes statistiques et le nom saisi à l'accueil."),
+      el("p",{style:"margin:0 0 10px"},CFG.FORMS_URL?T.sendFormsTxt:T.sendCopyTxt),
       ta,
       el("div",{class:"btn-row"},
-        FORMS_URL? el("button",{class:"btn primary",onclick:()=>{window.open(formsLink(S.name,code),"_blank")}},"Envoyer via MS Forms"):null,
-        el("button",{class:"btn"+(FORMS_URL?" ghost":" primary"),onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},"Copier le code"),
-        el("button",{class:"btn ghost",onclick:downloadBackup},"Sauvegarde complète (.json)"),
-        el("button",{class:"btn ghost",onclick:restoreBackup},"Restaurer une sauvegarde"),
+        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:()=>{window.open(
+          CFG.FORMS_URL+"&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName)
+                       +"&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(code),"_blank")}},T.sendForms):null,
+        el("button",{class:"btn"+(CFG.FORMS_URL?" ghost":" primary"),onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},T.copyCode),
+        el("button",{class:"btn ghost",onclick:downloadBackup},T.backup),
+        el("button",{class:"btn ghost",onclick:restoreBackup},T.restore),
         el("button",{class:"btn ghost",style:"color:var(--rouge);border-color:var(--rouge)",onclick:()=>{
-          if(confirm("Effacer toute la progression sur cet appareil ? Cette action est définitive.")){localStorage.removeItem(LS);S=load();renderSuivi()}
-        }},"Réinitialiser"))));
+          if(confirm(T.resetConfirm)){localStorage.removeItem(CFG.ls);S=load();renderSuivi()}
+        }},T.reset))));
 }
 function buildExportCode(){
   const u={};
   UNIT_ORDER.forEach(uid=>{
     const ids=UNITS[uid].ids, s=ids.filter(isSeen);
     if(!s.length)return;
-    let a=0,c=0; s.forEach(id=>{a+=S.srs[id].seen;c+=S.srs[id].ok});
+    let a=0,c=0; ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){a+=r.seen;c+=r.ok}}));
     u[uid]=[s.length,ids.length,ids.filter(isMastered).length,pct(c,a)];
   });
-  // weakest lessons (≥5 answers), top 6
-  const w=[];
+  let l=[];
   UNIT_ORDER.forEach(uid=>UNITS[uid].lessonOrder.forEach(lid=>{
-    let a=0,c=0; UNITS[uid].lessons[lid].ids.forEach(id=>{const r=S.srs[id];if(r){a+=r.seen;c+=r.ok}});
-    if(a>=5)w.push([lid,UNITS[uid].lessons[lid].title,pct(c,a)]);
+    const ids=UNITS[uid].lessons[lid].ids;
+    const s=ids.filter(isSeen); if(!s.length)return;
+    let a=0,c=0; ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){a+=r.seen;c+=r.ok}}));
+    l.push([lid,s.length,ids.length,pct(c,a)]);
   }));
-  w.sort((x,y)=>x[2]-y[2]);
-  const payload={v:1,n:S.name||"(sans nom)",t:Date.now(),
-    o:{seen:Object.keys(S.srs).filter(isSeen).length,total:CORPUS.length,
-       mast:Object.keys(S.srs).filter(isMastered).length,sess:S.sessions.length},
-    u,w:w.slice(0,6)};
-  return "LEXFR1."+btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const x=S.exams.slice(-5).map(e2=>[Math.round(e2.t/DAY),e2.pct,e2.n]);
+  const a2=assignment();
+  const payload={v:2,n:S.name||T.noName,t:Date.now(),
+    o:{seen:CORPUS.map(e=>e.id).filter(isSeen).length,total:CORPUS.length,
+       mast:CORPUS.map(e=>e.id).filter(isMastered).length,sess:S.sessions.length,lee:leeches().length},
+    u,l,x, a:a2?{lab:a2.label,done:a2.done}:null};
+  let code=CFG.prefix+btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  if(code.length>3800){ // MS Forms long-answer safety: keep weakest 30 lessons
+    payload.l=l.slice().sort((p,q2)=>p[3]-q2[3]).slice(0,30);
+    payload.lt=true;
+    code=CFG.prefix+btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  }
+  return code;
 }
 function downloadBackup(){
   const blob=new Blob([JSON.stringify(S)],{type:"application/json"});
-  const a=el("a",{href:URL.createObjectURL(blob),download:"lexique-sauvegarde.json"});a.click();
+  const a=el("a",{href:URL.createObjectURL(blob),download:T.backupFile});a.click();
 }
 function restoreBackup(){
   const inp=el("input",{type:"file",accept:".json"});
   inp.addEventListener("change",()=>{
     const f=inp.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=()=>{try{const s=JSON.parse(r.result);if(!s.srs)throw 0;S=s;save();renderSuivi();alert("Sauvegarde restaurée.")}
-      catch(e){alert("Fichier non reconnu — choisis une sauvegarde exportée depuis ce site.")}};
+    r.onload=()=>{try{const s=JSON.parse(r.result);if(!s.srs)throw 0;localStorage.setItem(CFG.ls,r.result);S=load();save();renderSuivi();alert(T.restored)}
+      catch(e){alert(T.badFile)}};
     r.readAsText(f);
   });
   inp.click();
