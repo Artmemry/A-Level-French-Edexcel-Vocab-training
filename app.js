@@ -7,6 +7,16 @@
 (function(){
 "use strict";
 
+/* ───────── config — teacher-editable ─────────
+   MS Forms drop-box. Leave FORMS_URL empty ("") to hide the button. */
+const FORMS_URL="https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=dBTLADSljUaCn2NuzjLCTEWSzXdNOvRDicS2YScslGFURTU4UjdJOTZWSEQyQzRHRTUxNzk4OEpFNyQlQCNjPTEu";
+const FORMS_FIELD_NAME="r08cab71007074f60a012ed77717b62d2";
+const FORMS_FIELD_CODE="rbd3a09625c5c42399a03efd42ac1d5fa";
+function formsLink(name, code){
+  return FORMS_URL+"&"+FORMS_FIELD_NAME+"="+encodeURIComponent(name||"(sans nom)")
+                 +"&"+FORMS_FIELD_CODE+"="+encodeURIComponent(code);
+}
+
 /* ───────── state ───────── */
 const LS="lexique-fr-v2", DAY=86400000;
 let S=load();
@@ -389,10 +399,13 @@ function renderSuivi(){
   const ta=el("textarea",{class:"code",readonly:""},code);
   v.append(el("div",{class:"section-label"},"Envoyer au professeur"),
     el("div",{class:"card"},
-      el("p",{style:"margin:0 0 10px"},"Copie ce code et transmets-le à ton professeur (e-mail, Teams…). Il ne contient que tes statistiques et le nom saisi à l'accueil."),
+      el("p",{style:"margin:0 0 10px"},FORMS_URL?
+        "Clique sur « Envoyer via MS Forms » : le formulaire s'ouvre avec ton nom et ton code déjà remplis — tu n'as plus qu'à appuyer sur Envoyer. Le code ne contient que tes statistiques et le nom saisi à l'accueil.":
+        "Copie ce code et transmets-le à ton professeur (e-mail, Teams…). Il ne contient que tes statistiques et le nom saisi à l'accueil."),
       ta,
       el("div",{class:"btn-row"},
-        el("button",{class:"btn primary",onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},"Copier le code"),
+        FORMS_URL? el("button",{class:"btn primary",onclick:()=>{window.open(formsLink(S.name,code),"_blank")}},"Envoyer via MS Forms"):null,
+        el("button",{class:"btn"+(FORMS_URL?" ghost":" primary"),onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},"Copier le code"),
         el("button",{class:"btn ghost",onclick:downloadBackup},"Sauvegarde complète (.json)"),
         el("button",{class:"btn ghost",onclick:restoreBackup},"Restaurer une sauvegarde"),
         el("button",{class:"btn ghost",style:"color:var(--rouge);border-color:var(--rouge)",onclick:()=>{
