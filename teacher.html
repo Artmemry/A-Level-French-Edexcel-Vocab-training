@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Le Lexique · Espace professeur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site">
+  <div class="site-inner">
+    <div>
+      <div class="brand">le lexique<sup>1</sup></div>
+      <div class="brand-sub">Espace professeur · cohort import</div>
+    </div>
+    <nav class="tabs"><button onclick="location.href='index.html'">← Site élève</button></nav>
+  </div>
+</header>
+
+<main>
+  <h2>Cohort analysis</h2>
+  <p class="lede">Paste one student code per line (codes start with <code>LEXFR1.</code>). Everything is decoded in your browser — nothing is uploaded anywhere.</p>
+
+  <div class="card">
+    <textarea id="codes" class="code" style="min-height:160px" placeholder="LEXFR1.eyJ2IjoxLCJuIjo…
+LEXFR1.eyJ2IjoxLCJuIjo…"></textarea>
+    <div class="btn-row">
+      <button class="btn primary" id="parse">Build cohort table</button>
+      <button class="btn ghost" id="csv" disabled>Download CSV</button>
+    </div>
+    <div id="err" class="feedback bad hidden" style="margin-top:12px"></div>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<footer class="site">Codes contain aggregate statistics only. Generated locally; no server, no upload.</footer>
+
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+let students=[];
+
+function decode(line){
+  line=line.trim();
+  if(!line) return null;
+  if(!line.startsWith("LEXFR1.")) throw new Error("Not a LEXFR1 code: "+line.slice(0,24)+"…");
+  const json = decodeURIComponent(escape(atob(line.slice(7))));
+  const p = JSON.parse(json);
+  if(p.v!==1) throw new Error("Unknown code version");
+  return p;
+}
+
+$("#parse").addEventListener("click",()=>{
+  const lines=$("#codes").value.split(/\n+/);
+  const errs=[]; students=[];
+  lines.forEach((l,i)=>{ if(!l.trim())return;
+    try{ const p=decode(l); if(p) students.push(p); }
+    catch(e){ errs.push("Line "+(i+1)+": "+e.message); }
+  });
+  const errBox=$("#err");
+  if(errs.length){ errBox.textContent=errs.join(" · "); errBox.classList.remove("hidden"); }
+  else errBox.classList.add("hidden");
+  render();
+  $("#csv").disabled=!students.length;
+});
+
+function pct(a,b){return b?Math.round(100*a/b):0}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function render(){
+  const R=$("#results"); R.innerHTML="";
+  if(!students.length){ R.innerHTML='<p style="color:var(--muted)">No valid codes yet.</p>'; return; }
+
+  // union of units present
+  const unitSet=new Set(); students.forEach(s=>Object.keys(s.u||{}).forEach(u=>unitSet.add(u)));
+  const units=[...unitSet].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+
+  let html='<div class="section-label">Overview</div><table class="stats"><thead><tr><th>Student</th><th>Exported</th><th>Seen</th><th>Mastered</th><th>Sessions</th><th>Poly acc.</th>';
+  units.forEach(u=>html+='<th>'+esc(u)+'</th>');
+  html+='</tr></thead><tbody>';
+  students.forEach(s=>{
+    html+='<tr><td><b>'+esc(s.n)+'</b></td>'
+      +'<td class="num">'+new Date(s.t).toLocaleDateString()+'</td>'
+      +'<td class="num">'+s.o.seen+'/'+s.o.total+'</td>'
+      +'<td class="num">'+s.o.mast+'</td>'
+      +'<td class="num">'+s.o.sess+'</td>'
+      +'<td class="num">'+(s.o.pAcc||0)+'&nbsp;%</td>';
+    units.forEach(u=>{
+      const d=(s.u||{})[u];
+      if(!d){ html+='<td class="num" style="color:var(--muted)">—</td>'; return; }
+      const cls=d[3]<60?'low':d[3]<80?'warn':'';
+      html+='<td class="num" title="'+d[0]+'/'+d[1]+' seen, '+d[2]+' mastered">'+d[3]+'%<div class="bar"><i class="'+cls+'" style="width:'+d[3]+'%"></i></div></td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+
+  // cohort-wide confusion aggregation
+  const conf={};
+  students.forEach(s=>(s.c||[]).forEach(([gid,head,a,b,n])=>{
+    const k=head+"|"+a+"|"+b;
+    conf[k]=conf[k]||{head,a,b,n:0,st:0};
+    conf[k].n+=n; conf[k].st++;
+  }));
+  const rows=Object.values(conf).sort((x,y)=>y.n-x.n).slice(0,20);
+  html+='<div class="section-label">Cohort sense confusions</div>';
+  if(!rows.length) html+='<p style="color:var(--muted)">No polysemy data in these codes.</p>';
+  else{
+    html+='<div class="card">';
+    rows.forEach(r=>{
+      html+='<span class="conf-pair"><b>'+esc(r.head)+'</b> : « '+esc(r.a)+' » ↔ « '+esc(r.b)+' » ×'+r.n+' ('+r.st+' student'+(r.st>1?'s':'')+')</span>';
+    });
+    html+='</div><p style="font-size:.85rem;color:var(--ink-soft)">These are the sense pairs your cohort mixes up most — prime candidates for a starter activity or an Atelier-style workshop block.</p>';
+  }
+  R.innerHTML=html;
+}
+
+$("#csv").addEventListener("click",()=>{
+  const unitSet=new Set(); students.forEach(s=>Object.keys(s.u||{}).forEach(u=>unitSet.add(u)));
+  const units=[...unitSet].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const head=["student","exported","seen","total","mastered","sessions","poly_accuracy_pct"];
+  units.forEach(u=>head.push(u+"_seen",u+"_total",u+"_mastered",u+"_accuracy_pct"));
+  head.push("top_confusions");
+  const lines=[head.join(",")];
+  students.forEach(s=>{
+    const row=['"'+s.n.replace(/"/g,'""')+'"', new Date(s.t).toISOString().slice(0,10),
+      s.o.seen, s.o.total, s.o.mast, s.o.sess, s.o.pAcc||0];
+    units.forEach(u=>{ const d=(s.u||{})[u]||["","","",""]; row.push(d[0],d[1],d[2],d[3]); });
+    row.push('"'+(s.c||[]).map(c=>c[1]+": "+c[2]+"↔"+c[3]+" x"+c[4]).join("; ").replace(/"/g,'""')+'"');
+    lines.push(row.join(","));
+  });
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="lexique-cohort.csv"; a.click();
+});
+})();
+</script>
+</body>
+</html>
