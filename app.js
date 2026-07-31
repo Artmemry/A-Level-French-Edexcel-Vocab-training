@@ -14,6 +14,7 @@ const CFG={
   ttsLang:"fr-FR",
   artRe:/^(le |la |les |l'|un |une |des )/,
   accents:["é","è","à","ê","ç","ô","î","œ","ï","â","û","ë","ù"],
+  stop:"le la les un une des de du au aux a en y et ou que qui se me te nous vous son sa ses mon ma mes ton ta tes est sont etre avoir comme pour par avec sans plus tres deja dans sur ce cet cette d l n s c j qu tout toute tous toutes chez vers depuis entre quand ou ici la si tellement",
   FORMS_URL:"https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=dBTLADSljUaCn2NuzjLCTEWSzXdNOvRDicS2YScslGFURTU4UjdJOTZWSEQyQzRHRTUxNzk4OEpFNyQlQCNjPTEu",
   FORMS_FIELD_NAME:"r08cab71007074f60a012ed77717b62d2",
   FORMS_FIELD_CODE:"rbd3a09625c5c42399a03efd42ac1d5fa"
@@ -62,6 +63,9 @@ const T={
   artTier:"Le mot est bon — vérifie l'article.",
   artWrong:"L'article n'est pas le bon — le genre compte comme de la grammaire.",
   typoTier:"Presque — vérifie l'orthographe.", wrong:"Non.",
+  senseTier:"Sens correct — compare ta version avec celle de la liste.",
+  selfOk:"Ma version est aussi valable", selfDone:"Acceptée ✓",
+  phraseNear:"Sens correct — mais la citation exacte est celle ci-dessous.",
   enTypo:"Bien — petite faute d'orthographe.",
   altNote:v=>["Ta réponse « ",v," » figure aussi dans tes listes pour ce sens — les deux comptent."],
   sibNote:"Aussi dans tes listes pour ce sens : ",
@@ -186,7 +190,93 @@ function pct(a,b){return b?Math.round(100*a/b):0}
 function stripAcc(s){return s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/œ/g,"oe").replace(/æ/g,"ae")}
 function normFr(s){return s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[¡!¿?]/g,"").replace(/\s+/g," ").trim()}
 function stripArt(s){return s.replace(CFG.artRe,"")}
-function normEn(s){return s.toLowerCase().replace(/’/g,"'").replace(/-/g," ").replace(/(\w)iz(e[sdr]?|ing|ation)\b/g,"$1is$2").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[!?.]+$/,"").replace(/\s+/g," ").trim()}
+function expandEn(s){
+  return s
+   .replace(/\bcan't\b/g,"cannot").replace(/\bwon't\b/g,"will not").replace(/\bshan't\b/g,"shall not")
+   .replace(/\bi'm\b/g,"i am")
+   .replace(/\b(he|she|it|that|this|there|here|what|who|where|when|how|one|nobody|somebody|everybody)'s\b/g,"$1 is")
+   .replace(/\blet's\b/g,"let us")
+   .replace(/\b(\w+)n't\b/g,"$1 not")
+   .replace(/\b(\w+)'ll\b/g,"$1 will")
+   .replace(/\b(\w+)'ve\b/g,"$1 have")
+   .replace(/\b(\w+)'re\b/g,"$1 are")
+   .replace(/\b(\w+)'d\b/g,"$1 would");
+}
+function normEn(s){return expandEn(s.toLowerCase().replace(/’/g,"'")).replace(/-/g," ").replace(/(\w)iz(e[sdr]?|ing|ation)\b/g,"$1is$2").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[!?.]+$/,"").replace(/\s+/g," ").trim()}
+
+/* ───────── phrase marking ─────────
+   Items of 4+ words (quotations, expressions) are marked on MEANING, not wording:
+   content-word overlap, function words ignored, synonyms and 1-letter slips tolerated.
+   Single words and short phrases keep the strict word-level rules. */
+const EN_STOP=new Set(("a an the to of in on at for with by from as and or but if so than then that this these those "
+ +"is are was were be been being am do does did done have has had will would shall should can could may might must "
+ +"i you he she it we they me him her us them my your his its our their there here one ones s "
+ +"into onto upon out over under about through across between within during after before again still just very own "
+ +"all any some each every own more most much many").split(" "));
+const TG_STOP=new Set(CFG.stop.split(" "));
+function lightStem(w){
+  return w.replace(/ies$/,"y").replace(/([^aeiou])s$/,"$1").replace(/ing$/,"").replace(/ed$/,"")
+          .replace(/([a-z])\1$/,"$1");
+}
+function toks(s,stop){
+  return String(s).split(/[^\p{L}\p{N}']+/u).map(w=>w.toLowerCase().replace(/^'+|'+$/g,""))
+    .filter(w=>w&&!stop.has(w)).map(lightStem).filter(w=>w.length>1);
+}
+/* multi-word equivalences collapsed to one token before scoring */
+const EN_MULTI=[["blow up","explode"],["blows up","explode"],["blew up","explode"],["burst","explode"],
+ ["take down","lower"],["takes down","lower"],["get down","lower"],["bring down","lower"],
+ ["get away","move_away"],["go away","move_away"],["step away","move_away"],["move away","move_away"],
+ ["speed up","hurry"],["speeds up","hurry"],["hurry up","hurry"],["bring forward","hurry"],
+ ["get up","rise"],["got up","rise"],["gets up","rise"],["stand up","rise"],
+ ["keep watch","watch"],["no longer","not_now"],["any more","not_now"],["anymore","not_now"]];
+function preMulti(s){ let t=" "+s+" "; EN_MULTI.forEach(([a,b])=>{ t=t.split(" "+a+" ").join(" "+b+" ") }); return t.trim(); }
+const enToks=s=>toks(preMulti(normEn(s)),EN_STOP);
+/* extra English token equivalences for phrase marking (meaning, not wording) */
+const EN_TOKSYN=[["explode","erupt"],["sink","drown"],["sorrow","grief"],["sorrow","mourning"],["grief","mourning"],
+ ["place","station"],["place","spot"],["remedy","cure"],["remedy","solution"],["gossip","rumour"],["gossip","talk"],
+ ["gossip","litany"],["dishonour","shame"],["dishonour","disgrace"],["shame","disgrace"],["weakness","frailty"],
+ ["sign","mark"],["watch","guard"],["storm","tempest"],["room","chamber"],["neighbour","neighbor"],
+ ["darkness","dark"],["deserve","earn"],["sure","certain"],["poison","venom"],["blessed","praised"],
+ ["celestial","spiritual"],["celestial","heavenly"],["sky","heaven"],["pour","spill"],["pour","tip"],
+ ["reed","rush"],["shore","bank"],["pony","mare"],["pony","horse"],["thing","matter"],["mean","meaning"],
+ ["sweep","wipe"],["step","pace"],["never","not"],["woman","women"],["want","love"]];
+const tgToks=s=>toks(stripAcc(normFr(s)),TG_STOP);
+/* token-level synonyms are built later, once the synonym layer has loaded */
+const SYN_TOK={};
+function tokMatch(a,b){
+  if(a===b)return true;
+  if(SYN_TOK[a]&&SYN_TOK[a].has(b))return true;
+  return Math.max(a.length,b.length)>=4 && levDist(a,b,1)<=1;   // phrase scoring only
+}
+function overlap(ansT, expT){
+  if(!expT.length) return {r:0,p:0};
+  const used=new Array(ansT.length).fill(false);
+  let hit=0;
+  expT.forEach(e=>{
+    for(let i=0;i<ansT.length;i++){ if(!used[i]&&tokMatch(e,ansT[i])){used[i]=true;hit++;return} }
+  });
+  return {r:hit/expT.length, p:ansT.length?hit/ansT.length:0};
+}
+/* short expected sets are brittle: 2 content words make one miss look like 50% failure,
+   so the bar eases as the expected answer gets shorter. */
+function phraseBars(expLen){
+  // With very few content words, partial overlap cannot distinguish a paraphrase
+  // from a different sentence ("women without a man" vs "men without work"),
+  // so short items demand every content word.
+  if(expLen<=2) return {full:1,   part:1};
+  if(expLen===3)return {full:0.75,part:0.5};
+  if(expLen===4)return {full:0.6, part:0.4};
+  return {full:0.65,part:0.4};
+}
+function isPhrase(entry){
+  return entry[K].some(v=>v.trim().split(/\s+/).length>=4)
+      || entry.en.some(g=>g.trim().split(/\s+/).length>=4);
+}
+function bestOverlap(ans, list, tokFn){
+  let best={r:0,p:0};
+  list.forEach(x=>{ const s=overlap(tokFn(ans), tokFn(x)); if(s.r>best.r||(s.r===best.r&&s.p>best.p)) best=s; });
+  return best;
+}
 function stripEnLead(s){return s.replace(/^(the |a |an |to )/,"")}
 function levDist(a,b,max){
   if(a===b)return 0;
@@ -277,6 +367,19 @@ function synGlosses(entry){
   return out;
 }
 
+/* token-level synonyms from the layer's single-word groups (needs _SY above) */
+(function(){
+  const add=(a,b)=>{ (SYN_TOK[a]=SYN_TOK[a]||new Set()).add(b); (SYN_TOK[b]=SYN_TOK[b]||new Set()).add(a); };
+  ((_SY.en||[]).concat(_SY.tg||[])).forEach(g=>{
+    const words=(Array.isArray(g)?g:(g.w||[])).map(w=>String(w)
+      .replace(/^(to |the |a |an |el |la |los |las |un |una |le |les |l'|des |du )/,"").trim());
+    const single=words.filter(w=>w&&w.indexOf(" ")<0).map(w=>lightStem(stripAcc(w.toLowerCase())));
+    for(let i=0;i<single.length;i++)for(let j=i+1;j<single.length;j++)
+      if(single[i]!==single[j]) add(single[i],single[j]);
+  });
+  EN_TOKSYN.forEach(([a,b])=>add(lightStem(a),lightStem(b)));
+})();
+
 const ANSWER_FORMS=new Set();
 CORPUS.forEach(e=>e[K].forEach(v=>ANSWER_FORMS.add(stripAcc(stripArt(normFr(v))))));
 
@@ -331,6 +434,13 @@ function checkFr(ans, entry, promptedGloss){
       if(hit) return {...hit, altTxt:w};
     }
   }
+  if(isPhrase(entry)){                       // quotation recalled with different wording
+    let best={r:0,p:0,n:0};
+    entry[K].concat(syn).forEach(v=>{ const t=tgToks(v); const s=overlap(tgToks(ans),t);
+      if(s.r>best.r||(s.r===best.r&&s.p>best.p)) best={...s,n:t.length}; });
+    const bar=phraseBars(best.n);
+    if(best.r>=bar.part && best.p>=0.25) return {q:3,msg:T.phraseNear,cls:"good"};
+  }
   return {q:1,msg:T.wrong,cls:"bad"};
 }
 function checkEn(ans, entry){
@@ -343,6 +453,14 @@ function checkEn(ans, entry){
     return {q:5,msg:T.exact,cls:"good"};
   if(vars.some(v=>nearMiss(stripEnLead(v),stripEnLead(raw))))
     return {q:4,msg:T.enTypo,cls:"good"};
+  if(isPhrase(entry)){                       // meaning-level marking for quotations/expressions
+    let best={r:0,p:0,n:0};
+    [...pool].forEach(g=>{ const t=enToks(g); const s=overlap(enToks(ans),t);
+      if(s.r>best.r||(s.r===best.r&&s.p>best.p)) best={...s,n:t.length}; });
+    const bar=phraseBars(best.n);
+    if(best.r>=bar.full && best.p>=0.4)  return {q:5,msg:T.exact,cls:"good"};
+    if(best.r>=bar.part && best.p>=0.25) return {q:3,msg:T.senseTier,cls:"good"};
+  }
   return {q:1,msg:T.wrong,cls:"bad"};
 }
 
@@ -670,14 +788,25 @@ function renderQ(){
       const oth=(GLOSS_TO_ENTRIES[xCanonEn(e.en[0])]||[]).filter(x=>x.id!==e.id).map(x=>x[K][0]);
       if(oth.length) sibs=[...new Set(oth)].slice(0,3).join(" · ");
     }
-    card.append(
-      el("div",{class:"feedback "+res.cls},res.msg,
+    const fb=el("div",{class:"feedback "+res.cls},res.msg,
         sibs? el("span",{class:"note"},T.sibNote,sibs):null,
         res.alt? el("span",{class:"note"},...T.altNote(res.alt[K][0])):
         res.altTxt? el("span",{class:"note"},...T.altNote(res.altTxt)):null,
         el("span",{class:"note"},
-          el("b",null,e[K].join(" ; "))," ",speakBtn(e[K][0],true)," — ",e.en.join(" ; "))),
-      nextBtn());
+          el("b",null,e[K].join(" ; "))," ",speakBtn(e[K][0],true)," — ",e.en.join(" ; ")));
+    /* Translation of a phrase has many valid renderings; where the automatic
+       check can't decide, the student judges against the model answer. */
+    if(isPhrase(e) && res.q<4){
+      const sg=el("button",{class:"btn small ghost",style:"margin-top:10px",onclick:()=>{
+        const r=srsGet(rk(e.id, dict?"enfr":dir));
+        r.seen--; if(res.q>=3)r.ok--;                 // undo the automatic mark
+        srsGrade(e.id, dict?"enfr":dir, 4);
+        if(res.q<3){ sess.ok++; const i=sess.wrong.lastIndexOf(e.id); if(i>=0)sess.wrong.splice(i,1); }
+        sg.disabled=true; sg.textContent=T.selfDone; fb.className="feedback good";
+      }},T.selfOk);
+      fb.append(sg);
+    }
+    card.append(fb, nextBtn());
     autoSpeak(e[K][0]);                                        // correct form revealed → say it
   }
   check.addEventListener("click",doCheck);
