@@ -29,6 +29,7 @@ const T={
   voiceLabel:"Voix", voiceHint:"★ = la meilleure voix disponible sur cet appareil. Essaie les autres si elle ne te convient pas.",
   homeTitle:"Tes listes de vocabulaire",
   homeLede:"Les listes reprennent exactement le classeur : choisis une unité, puis une leçon. Consulte la liste ou entraîne-toi en tapant tes réponses — dans les deux sens. Ta progression reste sur cet appareil ; exporte ton code dans Suivi pour l'envoyer au professeur.",
+  sidLabel:"Ton numéro de candidat",sidHint:"À saisir une seule fois. Il permet à ton professeur de suivre ta progression sur les deux ans, même si tu changes d'ordinateur.",sidPh:"ex. 4417",
   nameLabel:"Ton nom (pour le code exporté)",
   namePh:"Prénom + initiale, ex. Sophie K.",
   dueCard:n=>n+" carte"+(n>1?"s":"")+" à réviser aujourd'hui",
@@ -95,8 +96,6 @@ const T={
   sendFormsTxt:"Clique sur « Envoyer via MS Forms » : le formulaire s'ouvre avec ton nom et ton code déjà remplis — tu n'as plus qu'à appuyer sur Envoyer. Le code ne contient que tes statistiques et le nom saisi à l'accueil.",
   sendCopyTxt:"Copie ce code et transmets-le à ton professeur (e-mail, Teams…). Il ne contient que tes statistiques et le nom saisi à l'accueil.",
   sendForms:"Envoyer via MS Forms", copyCode:"Copier le code",
-  sendPasteTxt:"Clique sur « Envoyer via MS Forms » : ton code est copié et le formulaire s\u2019ouvre. Colle le code dans la case « Code », écris ton nom et appuie sur Envoyer.",
-  formsPasteHint:"Code copié. Colle-le dans la case « Code » du formulaire.",
   backup:"Sauvegarde complète (.json)", restore:"Restaurer une sauvegarde", reset:"Réinitialiser",
   resetConfirm:"Effacer toute la progression sur cet appareil ? Cette action est définitive.",
   restored:"Sauvegarde restaurée.", badFile:"Fichier non reconnu — choisis une sauvegarde exportée depuis ce site.",
@@ -622,6 +621,10 @@ function renderAccueil(){
       el("label",{for:"student-name",style:"font-weight:600;font-size:.9rem"},T.nameLabel),
       el("input",{id:"student-name",class:"typed",style:"margin-top:8px",value:S.name||"",placeholder:T.namePh,
         oninput:e=>{S.name=e.target.value.trim();save()}}),
+      el("label",{for:"student-sid",style:"font-weight:600;font-size:.9rem;display:block;margin-top:14px"},T.sidLabel),
+      el("p",{class:"lede",style:"font-size:.82rem;margin:2px 0 0"},T.sidHint),
+      el("input",{id:"student-sid",class:"typed",style:"margin-top:8px",value:S.sid||"",placeholder:T.sidPh,
+        oninput:e=>{S.sid=e.target.value.trim();save()}}),
       el("div",{class:"btn-row"},audioToggle()), voicePicker()));
   if(a){
     const card=el("div",{class:"card",style:"margin-top:14px;border-color:var(--bleu)"},
@@ -978,20 +981,12 @@ function renderSuivi(){
   const ta=el("textarea",{class:"code",readonly:""},code);
   v.append(el("div",{class:"section-label"},T.sendTitle),
     el("div",{class:"card"},
-      el("p",{style:"margin:0 0 10px"},CFG.FORMS_URL?((CFG.FORMS_FIELD_NAME&&CFG.FORMS_FIELD_CODE)?T.sendFormsTxt:T.sendPasteTxt):T.sendCopyTxt),
+      el("p",{style:"margin:0 0 10px"},CFG.FORMS_URL?T.sendFormsTxt:T.sendCopyTxt),
       ta,
       el("div",{class:"btn-row"},
-        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:async()=>{
-          const prefill = CFG.FORMS_FIELD_NAME && CFG.FORMS_FIELD_CODE;
-          if(!prefill){                       // tokens unknown: copy first so one paste finishes it
-            try{ await navigator.clipboard.writeText(code); }catch(e){ ta.select(); document.execCommand("copy"); }
-            alert(T.formsPasteHint);
-            window.open(CFG.FORMS_URL,"_blank","noopener");
-            return;
-          }
-          window.open(CFG.FORMS_URL+"&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName)
-                       +"&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(code),"_blank","noopener");
-        }},T.sendForms):null,
+        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:()=>{window.open(
+          CFG.FORMS_URL+"&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName)
+                       +"&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(code),"_blank")}},T.sendForms):null,
         el("button",{class:"btn"+(CFG.FORMS_URL?" ghost":" primary"),onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},T.copyCode),
         el("button",{class:"btn ghost",onclick:downloadBackup},T.backup),
         el("button",{class:"btn ghost",onclick:restoreBackup},T.restore),
@@ -1020,6 +1015,7 @@ function buildExportCode(){
     o:{seen:CORPUS.map(e=>e.id).filter(isSeen).length,total:CORPUS.length,
        mast:CORPUS.map(e=>e.id).filter(isMastered).length,sess:S.sessions.length,lee:leeches().length},
     u,l,x, a:a2?{lab:a2.label,done:a2.done}:null};
+    if(S.sid) payload.i=S.sid;   // stable id: keeps a two-year record joined when the typed name changes
   let code=CFG.prefix+btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
   if(code.length>3800){ // MS Forms long-answer safety: keep weakest 30 lessons
     payload.l=l.slice().sort((p,q2)=>p[3]-q2[3]).slice(0,30);
