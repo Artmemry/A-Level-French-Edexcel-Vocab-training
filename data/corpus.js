@@ -3449,7 +3449,7 @@ window.CORPUS = [
   {"id":"ETR.3.027","unit":"ETR","unitName":"L’Étranger (roman)","lesson":"ETR.3","lessonTitle":"Vocabulaire complémentaire — verbes","fr":["à coup sûr"],"en":["for certain"]},
   {"id":"ETR.3.028","unit":"ETR","unitName":"L’Étranger (roman)","lesson":"ETR.3","lessonTitle":"Vocabulaire complémentaire — verbes","fr":["cela ne me regarde pas"],"en":["it is none of my business"]},
   {"id":"U9.1.022","fr":["le Rassemblement National (RN)","le Rassemblement national","le RN"],"en":["the National Rally","the main far-right party, renamed from the Front National in 2018"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
-  {"id":"U9.1.022","fr":["la dédiabolisation)"],"en":["de-demonisation","image make-over of Front National in 2018"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
+  {"id":"U9.1.022","fr":["la dédiabolisation"],"en":["de-demonisation","image make-over of Front National in 2018"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.025","fr":["Les Républicains (LR)","Les Républicains","le parti Les Républicains"],"en":["The Republicans","the traditional conservative party, called the UMP until 2015"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.026","fr":["Renaissance","le macronisme", "les macronistes"],"en":["Renaissance","the centrist presidential party, called La République en Marche until 2022"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.031","fr":["La France Insoumise (LFI)","La France insoumise","LFI"],"en":["France Unbowed","the radical left party"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
@@ -3457,13 +3457,11 @@ window.CORPUS = [
   {"id":"U9.1.034","fr":["Les Écologistes","les Écologistes"],"en":["the Greens","the main green party, called Europe Écologie Les Verts until 2023"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.036","fr":["un bloc","le bloc"],"en":["a bloc","a group of parties that vote together"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.037","fr":["une faction","la faction"],"en":["a faction"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
-  
   {"id":"U9.1.042","fr":["se rallier à"],"en":["to rally to","to come round to"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.043","fr":["l'ancrage local"],"en":["local roots","a strong local base"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.047","fr":["une alliance tactique"],"en":["a tactical alliance"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.048","fr":["un sondage","le sondage"],"en":["an opinion poll"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.049","fr":["être en tête des sondages"],"en":["to lead the polls","to top the polls"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
- 
   {"id":"U9.1.051","fr":["le clivage gauche-droite"],"en":["the left-right divide"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.052","fr":["une fracture","la fracture"],"en":["a rift","a deep division"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
   {"id":"U9.1.053","fr":["la majorité présidentielle"],"en":["the president's parliamentary bloc"],"unit":"U9","unitName":"Politique","lesson":"U9.1","lessonTitle":"Political parties & spectrum"},
