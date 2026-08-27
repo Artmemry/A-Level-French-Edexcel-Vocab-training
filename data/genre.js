@@ -26,7 +26,9 @@ window.GENERO = {
     ["", "e"]         // un employé     → une employée
   ],
 
-  invariable: ["iste","aire","able","ible","e","que","ste"],
+  /* Terminaisons réellement épicènes. Surtout pas "e" tout seul :
+     « la chanteuse » deviendrait « le chanteuse ». */
+  invariable: ["iste","aire","logue","graphe","able","ible"],
 
   pairs: [
     ["homme","femme"],      ["mari","femme"],       ["père","mère"],
@@ -35,7 +37,13 @@ window.GENERO = {
     ["neveu","nièce"],      ["gendre","belle-fille"],["copain","copine"],
     ["vieux","vieille"],    ["beau","belle"],       ["nouveau","nouvelle"],
     ["fou","folle"],        ["frais","fraîche"],    ["favori","favorite"],
-    ["serviteur","servante"],["dieu","déesse"],     ["taureau","vache"]
+    ["serviteur","servante"],["dieu","déesse"],     ["taureau","vache"],
+    ["élève","élève"],["enfant","enfant"],["camarade","camarade"],
+    ["collègue","collègue"],["adulte","adulte"],["architecte","architecte"],
+    ["photographe","photographe"],["interprète","interprète"],
+    ["bénévole","bénévole"],["gosse","gosse"],["cadre","cadre"],
+    ["juge","juge"],["membre","membre"],["ministre","ministre"],
+    ["guide","guide"],["élu","élue"]
   ],
 
   /* Mots que la règle transformerait à tort — « le livre » / « la livre »,
