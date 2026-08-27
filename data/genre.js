@@ -59,5 +59,49 @@ window.GENERO = {
     ["malheur","malheuse"],["honneur","honneuse"]
   ],
 
+  /* Noms de personne. Un nom précédé d'un article ne change de genre que
+     s'il figure ici (ou dans "pairs") : « un employé » oui, « le travail »
+     non. Les adjectifs seuls — sans article — n'en ont pas besoin.
+     Quand tu ajoutes un métier au corpus, ajoute le mot ici. */
+  personas: [
+    "acteur", "adepte", "adhérent", "adolescent", "adulte", "africain",
+    "agriculteur", "algérien", "allemand", "alsacien", "ami", "américain",
+    "anglais", "annonceur", "antillais", "apprenti", "argentin", "artisan",
+    "artiste", "asiatique", "assassin", "auditeur", "auteur", "avocat",
+    "bachelier", "belge", "berger", "bordelais", "boulanger", "boxeur",
+    "breton", "brésilien", "bénévole", "camerounais", "canadien",
+    "candidat", "chanteur", "cheminot", "chercheur", "chilien", "chinois",
+    "chirurgien", "chômeur", "citoyen", "coiffeur", "collaborateur",
+    "collégien", "colombien", "commerçant", "communiste", "comédien",
+    "congolais", "conseiller", "consommateur", "corse", "coréen", "cousin",
+    "croyant", "créateur", "cubain", "célibataire", "danois", "danseur",
+    "descendant", "dessinateur", "directeur", "dirigeant", "débutant",
+    "défenseur", "dénonciateur", "déporté", "député", "détenteur",
+    "détenu", "employeur", "employé", "enfant", "enseignant", "espagnol",
+    "européen", "finlandais", "fonctionnaire", "frontiste", "gagnant",
+    "gallois", "gardien", "gendarme", "grec", "gréviste", "habitant",
+    "historien", "hollandais", "immigrant", "immigré", "indien",
+    "infirmier", "instituteur", "internaute", "interprète", "iranien",
+    "irlandais", "israélien", "italien", "ivoirien", "japonais",
+    "jardinier", "joueur", "journaliste", "jumeau", "juré", "latino",
+    "lecteur", "libanais", "locataire", "lycéen", "lyonnais", "maire",
+    "marié", "marocain", "marseillais", "meurtrier", "mexicain",
+    "milicien", "militaire", "militant", "musicien", "mécanicien",
+    "nigérian", "normand", "norvégien", "occupant", "ouvrier",
+    "pakistanais", "parent", "parisien", "partenaire", "partisan",
+    "patron", "paysan", "perdant", "pharmacien", "policier", "politicien",
+    "polonais", "pompier", "portugais", "professeur", "propriétaire",
+    "provençal", "proviseur", "président", "péruvien", "refugié",
+    "retraité", "revendeur", "riverain", "russe", "réalisateur",
+    "réfractaire", "réfugié", "résistant", "salarié", "scientifique",
+    "scénariste", "serveur", "socialiste", "sociologue", "spectateur",
+    "sportif", "stagiaire", "suisse", "supporteur", "survivant", "suédois",
+    "syndicaliste", "syrien", "sénégalais", "technicien", "touriste",
+    "travailleur", "traître", "tunisien", "turc", "téléspectateur",
+    "utilisateur", "vainqueur", "vendeur", "veuf", "villageois", "voisin",
+    "écolier", "écologiste", "écossais", "écrivain", "éditeur", "égyptien",
+    "électeur", "électricien", "élève", "époux", "étranger", "étudiant"
+  ],
+
   stops: ["de","du","des","à","au","aux","en","avec","sans","par","pour","que","qui","et","ou","comme"]
 };
