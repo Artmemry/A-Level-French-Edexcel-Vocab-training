@@ -1,0 +1,26 @@
+Four entries in the existing U9.1 list are wrong. Each is a single
+find-and-replace inside data/corpus.js — the text below is exact.
+
+U9.1.018 — the French and the English are the wrong way round
+
+  FIND     "fr": ["de gauche"], "en": ["to be right-wing", "left-wing", "être de droite"]
+
+  REPLACE  "fr": ["être de gauche", "de gauche"], "en": ["to be left-wing", "left-wing"]
+
+U9.1.009 — the FN has been the RN since 2018
+
+  FIND     "en": ["the extreme-right nationalist party", "National Front"]
+
+  REPLACE  "en": ["the National Front, called the Rassemblement National since 2018"]
+
+U9.1.017 — the UMP has been Les Républicains since 2015
+
+  FIND     "en": ["Coalition of right-wing and democratic parties"]
+
+  REPLACE  "en": ["the former name of Les Républicains, until 2015"]
+
+U9.1.001 — the UDF was absorbed into the MoDem in 2007
+
+  FIND     "en": ["Centre Party"]
+
+  REPLACE  "en": ["a former centre party, absorbed into the MoDem in 2007"]
