@@ -22,7 +22,7 @@ const CFG={
   ALERT_URL:"",
   /* Optional. The field id of one extra question on the Forms form, which then
      carries the report in words instead of inside the code. */
-  FORMS_FIELD_FLAG:"",
+  FORMS_FIELD_FLAG:"r50919594cef64b7eadb64f944471b252",
   FORMS_FIELD_CODE:"rbd3a09625c5c42399a03efd42ac1d5fa"
 };
 /*CFG-END*/
@@ -1154,10 +1154,15 @@ function claimPanel(){
       p.map(c=>el("div",{style:"padding:3px 0"},claimLine(c)))),
     el("p",{class:"lede",style:"margin:8px 0 0"},sentAuto?T.flagAuto:T.flagLede));
   if(!sentAuto && CFG.FORMS_URL && CFG.FORMS_FIELD_FLAG){
+    /* The report rides on the form the student already uses, and carries their
+       progress code with it, so the code question can stay compulsory. */
     const b=el("button",{class:"btn",onclick:()=>{
-      window.open(CFG.FORMS_URL
+      let u=CFG.FORMS_URL
         +"&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName)
-        +"&"+CFG.FORMS_FIELD_FLAG+"="+encodeURIComponent(p.map(claimLine).join(" | ")),"_blank");
+        +"&"+CFG.FORMS_FIELD_FLAG+"="+encodeURIComponent(p.map(claimLine).join("  |  "));
+      try{ if(CFG.FORMS_FIELD_CODE)
+        u+="&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(buildExportCode()); }catch(e){}
+      window.open(u,"_blank");
       markClaimsSent(); b.disabled=true; b.textContent=T.flagSent;
     }},T.flagSend);
     card.append(el("div",{class:"btn-row"},b));
@@ -1283,9 +1288,13 @@ function renderSuivi(){
       el("p",{style:"margin:0 0 10px"},CFG.FORMS_URL?T.sendFormsTxt:T.sendCopyTxt),
       ta,
       el("div",{class:"btn-row"},
-        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:()=>{window.open(
-          CFG.FORMS_URL+"&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName)
-                       +"&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(code),"_blank")}},T.sendForms):null,
+        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:()=>{
+          /* a field id that is not filled in is left out, rather than sent as
+             an "&=" pair that Forms cannot read */
+          let u=CFG.FORMS_URL;
+          if(CFG.FORMS_FIELD_NAME) u+="&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName);
+          if(CFG.FORMS_FIELD_CODE) u+="&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(code);
+          window.open(u,"_blank")}},T.sendForms):null,
         el("button",{class:"btn"+(CFG.FORMS_URL?" ghost":" primary"),onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},T.copyCode),
         el("button",{class:"btn ghost",onclick:downloadBackup},T.backup),
         el("button",{class:"btn ghost",onclick:restoreBackup},T.restore),
