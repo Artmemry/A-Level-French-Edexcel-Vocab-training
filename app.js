@@ -40,6 +40,28 @@ const T={
   sidLabel:"Ton numéro de candidat",sidHint:"À saisir une seule fois. Il permet à ton professeur de suivre ta progression sur les deux ans, même si tu changes d'ordinateur.",sidPh:"ex. 4417",
   nameLabel:"Ton nom (pour le code exporté)",
   namePh:"Prénom + initiale, ex. Sophie K.",
+  /* the report to the teacher — sentences in English, buttons in French */
+  barNever:"Your teacher has not received anything from you yet.",
+  barWaiting:(n,ago)=>"Sent "+ago+" · "+n+" activit"+(n>1?"ies":"y")+" not sent since then.",
+  barClear:ago=>"Sent to your teacher "+ago+" · nothing waiting.",
+  barUnsent:n=>n+" activit"+(n>1?"ies":"y")+" still to send.",
+  barSend:"Envoyer maintenant",
+  barSending:"Ouverture du formulaire…",
+  agoNow:"a moment ago",
+  agoMin:n=>n+" minute"+(n>1?"s":"")+" ago",
+  agoHour:n=>n+" hour"+(n>1?"s":"")+" ago",
+  agoDay:n=>n+" day"+(n>1?"s":"")+" ago",
+  sendPanelTitle:"Envoyer à mon professeur",
+  sendPanelWhat:(seen,mast,acc)=>"Your teacher will see: "+seen+" words seen, "+mast+" mastered, "+acc+" % accuracy.",
+  sendPanelHow:"The form opens with your name and your code already filled in — you just press Submit.",
+  sendPanelHowPaste:"Your code is copied for you and the form opens: paste it into the “Code” box and press Submit.",
+  sendPanelGo:"Envoyer à mon professeur",
+  sendPanelDone:"Envoyé ✓",
+  sendPanelThanks:"Sent. Your teacher will see it in their list.",
+  sendPanelLater:"You can also send it later from Suivi.",
+  sendNameHint:"Put your name in so your teacher knows whose code this is.",
+  sendPasteTxt:"Press « Envoyer via MS Forms »: your code is copied for you and the form opens. Paste the code into the “Code” box, type your name and press Submit.",
+  formsPasteHint:"Code copied. Paste it into the “Code” box on the form.",
   dueCard:n=>n+" carte"+(n>1?"s":"")+" à réviser aujourd'hui",
   startReview:"Lancer la révision →",
   unitsLabel:"Unités",
@@ -815,6 +837,133 @@ const pad=(function(){
 function showPad(i){ padTarget=i; pad.classList.remove("hidden"); document.body.classList.add("pad-on"); }
 function hidePad(){ padTarget=null; pad.classList.add("hidden"); document.body.classList.remove("pad-on"); }
 
+/* ═══════════════════════════════════════════════════════════════════
+   THE REPORT TO THE TEACHER
+   The code was only ever sent when a student remembered to go and look
+   for it in Suivi, which is to say rarely. It now offers itself at
+   the end of every activity, and the strip under the header keeps the
+   state in view. Nothing is ever withheld and nothing is compulsory:
+   the student presses the button, or does not.
+   ═══════════════════════════════════════════════════════════════════ */
+function sentState(){ return S.sent && S.sent.t ? S.sent : null; }
+function unsentCount(){
+  const done = S.sessions.length;
+  const at = sentState() ? (S.sent.s || 0) : 0;
+  return Math.max(0, done - at);
+}
+function agoText(ms){
+  const d = Date.now() - ms;
+  if(d < 90000) return T.agoNow;
+  if(d < 3600000) return T.agoMin(Math.round(d/60000));
+  if(d < DAY) return T.agoHour(Math.round(d/3600000));
+  return T.agoDay(Math.round(d/DAY));
+}
+/* what the code is about to say, in words, so the student knows what travels */
+function sendSummary(){
+  const ids = CORPUS.map(e=>e.id);
+  const seen = ids.filter(isSeen).length, mast = ids.filter(isMastered).length;
+  let a=0,c=0;
+  ids.forEach(id=>["f","r"].forEach(d=>{ const r=recOf(id,d); if(r){ a+=r.seen; c+=r.ok; } }));
+  return {seen:seen, mast:mast, acc:pct(c,a)};
+}
+function markSent(){
+  S.sent = {t:Date.now(), s:S.sessions.length, x:S.exams.length};
+  save();
+  renderSendBar();
+}
+/* One route out, used by the strip, the end-of-activity panel and Suivi,
+   so all three behave the same and all three record the send. */
+async function sendNow(extra){
+  const code = buildExportCode();
+  const tail = extra || "";
+  if(!CFG.FORMS_URL){
+    try{ await navigator.clipboard.writeText(code); }catch(e){}
+    markSent();
+    return "copied";
+  }
+  if(CFG.FORMS_FIELD_NAME && CFG.FORMS_FIELD_CODE){
+    window.open(CFG.FORMS_URL
+      + "&" + CFG.FORMS_FIELD_NAME + "=" + encodeURIComponent((S.name||"").trim() || T.noName)
+      + "&" + CFG.FORMS_FIELD_CODE + "=" + encodeURIComponent(code) + tail, "_blank", "noopener");
+    markSent();
+    return "prefilled";
+  }
+  /* the form's field ids are not configured: copy, then open the empty form */
+  try{ await navigator.clipboard.writeText(code); }
+  catch(e){
+    const ta = el("textarea", {}, code);
+    document.body.append(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(e2){}
+    ta.remove();
+  }
+  alert(T.formsPasteHint);
+  /* Half a configuration is still worth using: fill in whatever field id is
+     known, and leave the clipboard for the box that is not. */
+  let u = CFG.FORMS_URL + tail;
+  if(CFG.FORMS_FIELD_NAME)
+    u += "&" + CFG.FORMS_FIELD_NAME + "=" + encodeURIComponent((S.name||"").trim() || T.noName);
+  if(CFG.FORMS_FIELD_CODE)
+    u += "&" + CFG.FORMS_FIELD_CODE + "=" + encodeURIComponent(code);
+  window.open(u, "_blank", "noopener");
+  markSent();
+  return "paste";
+}
+
+function renderSendBar(){
+  const bar = $("#sendbar");
+  if(!bar) return;
+  const nothingYet = !S.sessions.length && !S.exams.length;
+  if(nothingYet){ bar.className = "sendbar hidden"; bar.innerHTML = ""; return; }
+
+  const st = sentState(), n = unsentCount();
+  let cls = "sendbar", txt;
+  if(!st){ cls += " waiting"; txt = T.barNever + (n ? " " + T.barUnsent(n) : ""); }
+  else if(n){ cls += " waiting"; txt = T.barWaiting(n, agoText(st.t)); }
+  else { cls += " clear"; txt = T.barClear(agoText(st.t)); }
+
+  bar.className = cls;
+  bar.innerHTML = "";
+  const inner = el("div", {class:"sendbar-inner"},
+    el("span", {class:"dot"}),
+    el("span", {class:"txt"}, txt));
+  if(!st || n){
+    const b = el("button", {class:"btn primary", onclick:async()=>{
+      b.disabled = true; b.textContent = T.barSending;
+      await sendNow();
+    }}, T.barSend);
+    inner.append(b);
+  }
+  bar.append(inner);
+}
+
+/* The panel at the end of an activity. It is the whole point of the change:
+   the moment a student has just finished something is the only moment they
+   are certain to be looking at the screen. */
+function sendPanel(){
+  const s = sendSummary();
+  const card = el("div", {class:"card send-card"},
+    el("h3", null, T.sendPanelTitle),
+    el("p", {class:"send-what"}, T.sendPanelWhat(s.seen, s.mast, s.acc)));
+
+  if(!(S.name||"").trim()){
+    const inp = el("input", {class:"typed send-name", value:"", placeholder:T.namePh,
+      oninput:e=>{ S.name = e.target.value.trim(); save(); }});
+    card.append(el("p", {class:"send-what", style:"margin-top:8px"}, T.sendNameHint), inp);
+  }
+
+  const how = (CFG.FORMS_FIELD_NAME && CFG.FORMS_FIELD_CODE) ? T.sendPanelHow : T.sendPanelHowPaste;
+  const note = el("p", {class:"send-what", style:"margin-top:10px"}, how);
+  const b = el("button", {class:"btn primary", onclick:async()=>{
+    b.disabled = true; b.textContent = T.barSending;
+    await sendNow();
+    b.textContent = T.sendPanelDone;
+    note.textContent = T.sendPanelThanks;
+  }}, T.sendPanelGo);
+  card.append(el("div", {class:"btn-row"}, b), note,
+              el("p", {class:"send-what", style:"margin-top:6px"}, T.sendPanelLater));
+  return card;
+}
+
 /* ───────── router ───────── */
 const VIEWS=["accueil","revision","examen","suivi"];
 function go(v){
@@ -827,6 +976,7 @@ function go(v){
   if(v==="revision")renderRevisionConfig();
   if(v==="examen")renderExamConfig();
   if(v==="suivi")renderSuivi();
+  renderSendBar();
   window.scrollTo(0,0);
 }
 VIEWS.forEach(v=>$("#tab-"+v).addEventListener("click",()=>go(v)));
@@ -1156,14 +1306,10 @@ function claimPanel(){
   if(!sentAuto && CFG.FORMS_URL && CFG.FORMS_FIELD_FLAG){
     /* The report rides on the form the student already uses, and carries their
        progress code with it, so the code question can stay compulsory. */
-    const b=el("button",{class:"btn",onclick:()=>{
-      let u=CFG.FORMS_URL
-        +"&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName)
-        +"&"+CFG.FORMS_FIELD_FLAG+"="+encodeURIComponent(p.map(claimLine).join("  |  "));
-      try{ if(CFG.FORMS_FIELD_CODE)
-        u+="&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(buildExportCode()); }catch(e){}
-      window.open(u,"_blank");
-      markClaimsSent(); b.disabled=true; b.textContent=T.flagSent;
+    const b=el("button",{class:"btn",onclick:async()=>{
+      b.disabled=true;
+      await sendNow("&"+CFG.FORMS_FIELD_FLAG+"="+encodeURIComponent(p.map(claimLine).join("  |  ")));
+      markClaimsSent(); b.textContent=T.flagSent;
     }},T.flagSend);
     card.append(el("div",{class:"btn-row"},b));
   }
@@ -1178,6 +1324,9 @@ function sessionEnd(v){
     el("h2",null,T.sessDone),
     el("div",{class:"kpi-row"},
       kpi(sess.queue.length,T.qs), kpi(sess.ok,T.right), kpi(pct(sess.ok,sess.queue.length)+" %",T.prec)),
+    /* above the list of words to review, which can run to thirty lines:
+       a panel below that is a panel nobody scrolls to */
+    sendPanel(),
     sess.wrong.length? el("div",{class:"card"},
       el("h3",null,T.toReview),
       el("div",{style:"margin-top:8px"},
@@ -1187,6 +1336,7 @@ function sessionEnd(v){
     el("div",{class:"btn-row"},
       el("button",{class:"btn primary",onclick:sess.back},T.cont),
       el("button",{class:"btn",onclick:()=>go("suivi")},T.seeProgress)));
+  renderSendBar();
 }
 function examEnd(v){
   hidePad(); v.innerHTML="";
@@ -1196,7 +1346,8 @@ function examEnd(v){
   v.append(
     el("h2",null,T.examDone),
     el("div",{class:"kpi-row"},
-      kpi(sess.queue.length,T.qs), kpi(sess.ok,T.right), kpi(p+" %",T.examScore)));
+      kpi(sess.queue.length,T.qs), kpi(sess.ok,T.right), kpi(p+" %",T.examScore)),
+    sendPanel());
   const wrongs=sess.answers.filter(a=>a.q<3);
   if(wrongs.length){
     const card=el("div",{class:"card"},el("h3",null,T.examWrong));
@@ -1211,6 +1362,7 @@ function examEnd(v){
   v.append(el("div",{class:"btn-row"},
     el("button",{class:"btn primary",onclick:renderExamConfig},T.examAgain),
     el("button",{class:"btn",onclick:()=>go("suivi")},T.seeProgress)));
+  renderSendBar();
 }
 
 /* ═════════ SUIVI ═════════ */
@@ -1285,16 +1437,10 @@ function renderSuivi(){
   const ta=el("textarea",{class:"code",readonly:""},code);
   v.append(el("div",{class:"section-label"},T.sendTitle),
     el("div",{class:"card"},
-      el("p",{style:"margin:0 0 10px"},CFG.FORMS_URL?T.sendFormsTxt:T.sendCopyTxt),
+      el("p",{style:"margin:0 0 10px"},CFG.FORMS_URL?((CFG.FORMS_FIELD_NAME&&CFG.FORMS_FIELD_CODE)?T.sendFormsTxt:T.sendPasteTxt):T.sendCopyTxt),
       ta,
       el("div",{class:"btn-row"},
-        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:()=>{
-          /* a field id that is not filled in is left out, rather than sent as
-             an "&=" pair that Forms cannot read */
-          let u=CFG.FORMS_URL;
-          if(CFG.FORMS_FIELD_NAME) u+="&"+CFG.FORMS_FIELD_NAME+"="+encodeURIComponent(S.name||T.noName);
-          if(CFG.FORMS_FIELD_CODE) u+="&"+CFG.FORMS_FIELD_CODE+"="+encodeURIComponent(code);
-          window.open(u,"_blank")}},T.sendForms):null,
+        CFG.FORMS_URL? el("button",{class:"btn primary",onclick:sendNow},T.sendForms):null,
         el("button",{class:"btn"+(CFG.FORMS_URL?" ghost":" primary"),onclick:async()=>{try{await navigator.clipboard.writeText(code)}catch(e){ta.select();document.execCommand("copy")}}},T.copyCode),
         el("button",{class:"btn ghost",onclick:downloadBackup},T.backup),
         el("button",{class:"btn ghost",onclick:restoreBackup},T.restore),
@@ -1401,4 +1547,5 @@ function deepLink(){
 window.addEventListener("hashchange", function(){ deepLink() || go("accueil"); });
 
 if(!deepLink()) go("accueil");
+renderSendBar();
 })();
