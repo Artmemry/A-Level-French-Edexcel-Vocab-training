@@ -283,3 +283,9 @@ button.speak:hover{border-color:var(--bleu); background:var(--bleu-pale)}
 .send-card .send-what{font-size:.9rem; color:var(--ink-soft); margin:2px 0 0}
 .send-card .btn.primary{font-size:1rem; padding:10px 18px}
 .send-name{margin-top:10px}
+
+/* ── the task strip: what is set this week, on every tab ── */
+.sendbar.task{background:var(--bleu-pale); border-bottom-color:#C9D3EA}
+.sendbar.task .dot{background:var(--bleu)}
+.sendbar.task.clear{background:var(--vert-pale); border-bottom-color:#BFD9CB}
+.sendbar.task.clear .dot{background:var(--vert)}
