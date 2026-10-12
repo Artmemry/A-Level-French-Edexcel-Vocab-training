@@ -224,7 +224,12 @@ function el(tag,attrs,...kids){
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function pct(a,b){return b?Math.round(100*a/b):0}
 function stripAcc(s){return s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/œ/g,"oe").replace(/æ/g,"ae")}
-function normFr(s){return s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[¡!¿?]/g,"").replace(/\s+/g," ").trim()}
+/* Reviewed claims, Oct 2026: commas and colons never decide an answer
+   ("metro boulot dodo" = "métro, boulot, dodo"), and the usual abbreviations
+   stand for the words: qqn / qn = quelqu'un, qqch / qch = quelque chose. */
+function normFr(s){return s.toLowerCase().replace(/’/g,"'").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[¡!¿?]/g,"")
+  .replace(/[,:]/g," ").replace(/(^|\s)(qqn|qn)(?=$|\s|[.,;])/g,"$1quelqu'un").replace(/(^|\s)(qqch|qch)(?=$|\s|[.,;])/g,"$1quelque chose")
+  .replace(/\s+/g," ").trim()}
 function stripArt(s){return s.replace(CFG.artRe,"")}
 function expandEn(s){
   return s
@@ -238,7 +243,11 @@ function expandEn(s){
    .replace(/\b(\w+)'re\b/g,"$1 are")
    .replace(/\b(\w+)'d\b/g,"$1 would");
 }
-function normEn(s){return expandEn(s.toLowerCase().replace(/’/g,"'")).replace(/-/g," ").replace(/(\w)iz(e[sdr]?|ing|ation)\b/g,"$1is$2").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[!?.]+$/,"").replace(/\s+/g," ").trim()}
+/* Reviewed claims, Oct 2026: apostrophes, commas and colons never decide an
+   English answer ("workers rights" = "workers' rights"), and migration /
+   migratory are one word ("migration policy" = "migratory policy"). The
+   contractions are expanded first, so "don't" still reads "do not". */
+function normEn(s){return expandEn(s.toLowerCase().replace(/’/g,"'")).replace(/'/g,"").replace(/[,:]/g," ").replace(/\bmigratory\b/g,"migration").replace(/-/g," ").replace(/(\w)iz(e[sdr]?|ing|ation)\b/g,"$1is$2").replace(/\s*\([^)]*\)/g,"").replace(/\.{3}$/,"").replace(/[!?.]+$/,"").replace(/\s+/g," ").trim()}
 
 /* ───────── phrase marking ─────────
    Items of 4+ words (quotations, expressions) are marked on MEANING, not wording:
@@ -703,6 +712,13 @@ function checkEn(ans, entry){
   const vars=[...pool].map(normEn);
   if(vars.includes(raw)||vars.map(stripEnLead).includes(stripEnLead(raw)))
     return {q:5,msg:T.exact,cls:"good"};
+  /* A model answer written with "…" is a pattern: any words fill the gap —
+     "to come from a … background" accepts "to come from an Italian background". */
+  for(const g of pool){
+    if(String(g).indexOf("…")<0) continue;
+    const re=new RegExp("^"+normEn(g).split("…").map(p=>p.trim().replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join(" .+? ").trim()+"$");
+    if(re.test(raw)||re.test(stripEnLead(raw))) return {q:5,msg:T.exact,cls:"good"};
+  }
   if(vars.some(v=>nearMiss(stripEnLead(v),stripEnLead(raw))))
     return {q:4,msg:T.enTypo,cls:"good"};
   /* Same word, another form: unify / unifies / unified / unifying. Only real
