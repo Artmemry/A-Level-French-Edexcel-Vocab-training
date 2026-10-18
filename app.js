@@ -118,13 +118,14 @@ const T={
   taskAllDone:"Task of the week done ✓", clsLabel:"Classe", clsHint:"Optional. Your teacher's task link sets it for you; change it here if it is wrong.", clsAsk:"Which class are you in?", taskGo:"Voir la tâche", taskStrip:l=>"This week: "+l,
   progressTitle:"Progress",
   progressLede:"Your progress unit by unit, the lessons that need work, and your code to send to your teacher.",
-  kSeen:"mots vus / ", kMast:"maîtrisés (≥ 3 sem.)", kDue:"révisions dues",
-  kProd:"précision production", kRec:"précision reconnaissance",
-  byUnit:"Par unité",
-  thUnit:"Unité", thSeen:"Vus", thMast:"Maîtrisés", thAcc:"Précision",
-  weakLessons:"Leçons à retravailler",
+  kSeen:"words practised, out of ", kMast:"words mastered · production", kMastC:"words mastered · comprehension", kDue:"reviews due",
+  kProd:"production accuracy · English → French", kRec:"comprehension accuracy · French → English",
+  kExplain:"Comprehension means understanding the French word and giving the English. Production means writing the French yourself from the English — the harder skill, and the one the exam rewards. A word counts as mastered when you have answered it correctly at reviews spread over three weeks or more.",
+  byUnit:"By unit",
+  thUnit:"Unit", thSeen:"Words practised", thMast:"Mastered (production)", thAcc:"Accuracy", thAccC:"Comprehension accuracy", thAccP:"Production accuracy",
+  weakLessons:"Lessons to work on — lowest accuracy",
   weakEmpty:"Not enough yet — practise a few lessons.",
-  weakLine:(u,n)=>`${u} · Leçon ${n}`,
+  weakLine:(u,n)=>`${u} · Lesson ${n}`,
   examsHist:"Your self-checks",
   sendTitle:"Send to your teacher",
   sendFormsTxt:"Press “Send via MS Forms”: the form opens with your name and your code already filled in — you just press Submit. The code holds your statistics, the name you typed on Home and your candidate number if you added it, nothing else.",
@@ -211,7 +212,12 @@ function srsGrade(id,dir,q){
 }
 const recOf=(id,d)=>S.srs[id+"|"+d];
 const isSeen=id=>{const f=recOf(id,"f"),r=recOf(id,"r");return (f&&f.seen>0)||(r&&r.seen>0)};
-const isMastered=id=>{const f=recOf(id,"f");return f&&f.int>=21};          // production is the exam skill
+const isMastered=id=>{const f=recOf(id,"f");return f&&f.int>=21};
+/* comprehension mastery: the same three-week rule, on the target → English direction */
+const isMasteredC=id=>{const r=recOf(id,"r");return r&&r.int>=21};
+/* answers and right answers per direction: c = comprehension (target → EN), p = production (EN → target) */
+function dirStats(ids){ let cA=0,cC=0,pA=0,pC=0; ids.forEach(id=>{const r=recOf(id,"r"),f=recOf(id,"f"); if(r){cA+=r.seen;cC+=r.ok} if(f){pA+=f.seen;pC+=f.ok}});
+  return {cA,cC,pA,pC,c:cA?pct(cC,cA):null,p:pA?pct(pC,pA):null}; }          // production is the exam skill
 function dueDirs(id){
   const out=[]; const f=recOf(id,"f"), r=recOf(id,"r");
   if(f&&f.seen>0&&f.due<=Date.now()) out.push("enfr");
@@ -1617,7 +1623,7 @@ function examEnd(v){
 function renderSuivi(){
   const v=$("#view-suivi"); v.innerHTML="";
   const seenIds=CORPUS.map(e=>e.id).filter(isSeen);
-  const mast=seenIds.filter(isMastered).length;
+  const mast=seenIds.filter(isMastered).length, mastC=seenIds.filter(isMasteredC).length;
   const dueN=CORPUS.reduce((n,e)=>n+dueDirs(e.id).length,0);
   let fa=0,fc=0,ra=0,rc=0;
   CORPUS.forEach(e=>{
@@ -1629,23 +1635,26 @@ function renderSuivi(){
     el("p",{class:"lede"},T.progressLede),
     el("div",{class:"kpi-row"},
       kpi(seenIds.length,T.kSeen+CORPUS.length),
-      kpi(mast,T.kMast),
-      kpi(dueN,T.kDue),
+      kpi(ra?pct(rc,ra)+" %":"—",T.kRec),
       kpi(fa?pct(fc,fa)+" %":"—",T.kProd),
-      kpi(ra?pct(rc,ra)+" %":"—",T.kRec)),
+      kpi(mastC,T.kMastC),
+      kpi(mast,T.kMast),
+      kpi(dueN,T.kDue)),
+    el("p",{class:"lede",style:"font-size:.9rem;margin-top:8px"},T.kExplain),
     el("div",{class:"section-label"},T.byUnit));
   const tbl=el("table",{class:"stats"},
-    el("thead",null,el("tr",null,el("th",null,T.thUnit),el("th",null,T.thSeen),el("th",null,T.thMast),el("th",null,T.thAcc),el("th",null,""))));
+    el("thead",null,el("tr",null,el("th",null,T.thUnit),el("th",null,T.thSeen),el("th",null,T.thMast),el("th",null,T.thAccC),el("th",null,T.thAccP),el("th",null,""))));
   const tb=el("tbody");
   UNIT_ORDER.forEach(uid=>{
     const u=UNITS[uid], s=u.ids.filter(isSeen), m=u.ids.filter(isMastered);
     let ua=0,uc=0; u.ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){ua+=r.seen;uc+=r.ok}}));
-    const acc=pct(uc,ua);
+    const acc=pct(uc,ua), ds=dirStats(u.ids);
     tb.append(el("tr",null,
       el("td",null,el("b",null,uid)," ",u.name),
       el("td",{class:"num"},`${s.length}/${u.ids.length}`),
       el("td",{class:"num"},String(m.length)),
-      el("td",{class:"num"},ua?acc+" %":"—"),
+      el("td",{class:"num"},ds.c==null?"—":ds.c+" %"),
+      el("td",{class:"num"},ds.p==null?"—":ds.p+" %"),
       el("td",null,el("div",{class:"bar"},el("i",{class:acc<60?"low":acc<80?"warn":"",style:"width:"+(ua?acc:0)+"%"})))));
   });
   tbl.append(tb); v.append(tbl);
@@ -1702,7 +1711,8 @@ function buildExportCode(){
     const ids=UNITS[uid].ids, s=ids.filter(isSeen);
     if(!s.length)return;
     let a=0,c=0; ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){a+=r.seen;c+=r.ok}}));
-    u[uid]=[s.length,ids.length,ids.filter(isMastered).length,pct(c,a),a];   /* …, answered (all time) */
+    const ds=dirStats(ids);
+    u[uid]=[s.length,ids.length,ids.filter(isMastered).length,pct(c,a),a,ds.c,ds.p,ids.filter(isMasteredC).length];   /* …, comprehension %, production %, comprehension-mastered */   /* …, answered (all time) */
   });
   let l=[];
   const _a2=assignment(); const TS=_a2?ansSince(_a2.since):null;
@@ -1711,7 +1721,7 @@ function buildExportCode(){
     const s=ids.filter(isSeen); if(!s.length)return;
     let a=0,c=0; ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){a+=r.seen;c+=r.ok}}));
     l.push([lid,s.length,ids.length,pct(c,a),a,ids.filter(isMastered).length,TS?(TS[lid]||0):null,
-            _a2?ids.filter(id=>(S.wr||{})[id]>=_a2.since).length:null]);   /* …, words written correctly since the task */   /* …, answered all time, mastered, answered since the task */
+            _a2?ids.filter(id=>(S.wr||{})[id]>=_a2.since).length:null,dirStats(ids).c,dirStats(ids).p]);   /* …, words written correctly since the task */   /* …, answered all time, mastered, answered since the task */
   }));
   const x=S.exams.slice(-5).map(e2=>[Math.round(e2.t/DAY),e2.pct,e2.n]);
   const a2=assignment();
@@ -1724,7 +1734,8 @@ function buildExportCode(){
        ans:Object.keys(S.srs).reduce((n,k)=>n+(S.srs[k].seen||0),0),
        ansW:Object.keys(S.srs).reduce((n,k)=>n+(/\|f$/.test(k)?(S.srs[k].seen||0):0),0),
        ansR:Object.keys(S.srs).reduce((n,k)=>n+(/\|r$/.test(k)?(S.srs[k].seen||0):0),0),
-       ansT:TS?Object.keys(TS).reduce((n,k)=>n+TS[k],0):null, ts:_a2?Math.floor(_a2.since/DAY):null},
+       ansT:TS?Object.keys(TS).reduce((n,k)=>n+TS[k],0):null, ts:_a2?Math.floor(_a2.since/DAY):null,
+       accC:dirStats(CORPUS.map(e=>e.id)).c, accP:dirStats(CORPUS.map(e=>e.id)).p, mastC:CORPUS.map(e=>e.id).filter(isMasteredC).length},
     u,l,x, a:a2?{lab:a2.label,done:a2.done}:null};
     if(S.sid) payload.i=S.sid;   // stable id: keeps a two-year record joined when the typed name changes
   let code=CFG.prefix+btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
