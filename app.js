@@ -1113,9 +1113,10 @@ function assignment(){
   const a=currentTask();
   if(!a||!a.label||!Array.isArray(a.lessons)||!a.lessons.length) return null;
   const since=Date.parse(a.since||"2000-01-01");
-  /* a list is done once 95 % of its words have been written correctly (English → target
-     language) since the task was set; reading alone never completes it */
-  const done=a.lessons.map(lid=>writtenNeed(lid,since)===0);
+  /* a list is done once every word has been written at least once (English → target
+     language) since the task was set, and 80 % of its words have been written correctly
+     at some point since then; reading alone never completes it */
+  const done=a.lessons.map(lid=>listDone(lid,since));
   const due=a.due ? new Date(a.due+"T23:59:59") : null;
   return {...a, since, done, due:(due&&!isNaN(due))?due:null,
           nDone:done.filter(Boolean).length, all:done.every(Boolean)};
@@ -1178,7 +1179,7 @@ function renderAccueil(){
       if(!L)return;
       card.append(el("div",{style:"display:flex;gap:10px;align-items:center;padding:4px 0"},
         el("span",{style:"flex:1"},T.lessonLine(lid.split(".")[1],L.title,L.ids.length)),
-        el("span",{class:"session-count",style:a.done[i]?"color:var(--vert)":"color:var(--rouge)"},a.done[i]?T.taskDone:(writtenNeed(lid,a.since)+" more to write")),
+        el("span",{class:"session-count",style:a.done[i]?"color:var(--vert)":"color:var(--rouge)"},a.done[i]?T.taskDone:listToGo(lid,a.since)),
         el("button",{class:"btn small primary",onclick:()=>startLesson(uid,lid)},T.practise)));
     });
     /* a two-site task: the rest of it is on the A-Level site, one click away */
@@ -1274,7 +1275,8 @@ let sess=null, lessonPrefs={dir:"mixte"}, revLen=20;
      reading (target language → English): until the student recognises the
        word — then that word moves on to writing, later in the same session;
      writing (English → target language): compulsory, and what counts the list
-       as done (95 % of its words written correctly since the task was set);
+       as done (every word written at least once since the task was set, and 80 %
+       of its words written correctly);
      dictation: only if the teacher added it when setting the task.
    The teacher can also switch reading off, for a group that should go straight
    to writing. Nobody is ever stuck: a word missed three times in reading
@@ -1282,14 +1284,37 @@ let sess=null, lessonPrefs={dir:"mixte"}, revLen=20;
    ═══════════════════════════════════════════════════════════════════ */
 const PH = /^es/.test(CFG.ttsLang||"") ? {read:"Leer", write:"Escribir", dict:"Dictado", go:"Empezar", lang:"Spanish"}
                                        : {read:"Lire", write:"Écrire", dict:"Dictée", go:"Commencer", lang:"French"};
-const DONE_SHARE = 0.95;
+const DONE_SHARE = 0.80;
 function markWritten(id){ S.wr = S.wr || {}; S.wr[id] = Date.now(); }
-/* how many more words of a list must be written correctly to reach 95 % */
-function writtenNeed(lid, since){
+/* every attempt at writing a word, right or wrong: completion needs each word tried */
+function markTried(id){ S.wt = S.wt || {}; S.wt[id] = Date.now(); }
+function listCounts(lid, since){
   const [uid] = lid.split("."), L = UNITS[uid] && UNITS[uid].lessons[lid];
-  if(!L) return 0;
-  const n = L.ids.length, w = L.ids.filter(id => (S.wr||{})[id] >= since).length;
-  return Math.max(0, Math.ceil(DONE_SHARE*n) - w);
+  if(!L) return null;
+  const wr = S.wr || {}, wt = S.wt || {};
+  const n = L.ids.length;
+  const right = L.ids.filter(id => wr[id] >= since).length;
+  const tried = L.ids.filter(id => wt[id] >= since || wr[id] >= since).length;
+  return {n, right, tried};
+}
+/* done = every word written at least once, and 80 % of the words written correctly */
+function listDone(lid, since){
+  const k = listCounts(lid, since);
+  return !k || (k.tried >= k.n && k.right >= Math.ceil(DONE_SHARE * k.n));
+}
+/* how many more words must be written correctly to reach 80 % (kept for the code) */
+function writtenNeed(lid, since){
+  const k = listCounts(lid, since);
+  return k ? Math.max(0, Math.ceil(DONE_SHARE * k.n) - k.right) : 0;
+}
+/* what is still missing, in words a student understands */
+function listToGo(lid, since){
+  const k = listCounts(lid, since); if(!k) return "";
+  const untried = k.n - k.tried, need = Math.max(0, Math.ceil(DONE_SHARE * k.n) - k.right);
+  const bits = [];
+  if(untried) bits.push(untried + " word" + (untried===1?"":"s") + " still to write");
+  if(need) bits.push(need + " more to get right");
+  return bits.join(" · ");
 }
 function taskModeFor(lid){
   const a = typeof currentTask === "function" ? currentTask() : null;
@@ -1302,7 +1327,7 @@ function startTaskLesson(uid, lid, mode){
   const v=$("#view-accueil"); v.innerHTML="";
   const L=UNITS[uid].lessons[lid];
   const steps=[mode.read ? [PH.read, "read each word and type the English. Once you know a word, it moves on to writing."] : null,
-               [PH.write, "type the "+PH.lang+" for each word. This is what counts: the list is done when 95 % of its words are written correctly."],
+               [PH.write, "type the "+PH.lang+" for each word. This is what counts: the list is done when you have written every word at least once and got 80 % of them right."],
                mode.dict ? [PH.dict, "listen and type what you hear, once you have written the word."] : null].filter(Boolean);
   v.append(
     el("div",{class:"session-bar"},el("button",{class:"btn small ghost",onclick:renderAccueil},T.back)),
@@ -1465,6 +1490,7 @@ function renderQ(){
     const q=res?res.q:1;
     srsGrade(e.id, dict?"enfr":dir, q);
     if(q>=3)sess.ok++; else sess.wrong.push(e.id);
+    if(dir==="enfr") markTried(e.id);                   /* every writing attempt: each word must be tried */
     if(dir==="enfr" && q>=3) markWritten(e.id);          /* writing correct: counts towards the list */
     if(sess.flow) flowNext(e.id, dir, q);
     if(sess.silent){
@@ -1721,7 +1747,8 @@ function buildExportCode(){
     const s=ids.filter(isSeen); if(!s.length)return;
     let a=0,c=0; ids.forEach(id=>["f","r"].forEach(d=>{const r=recOf(id,d);if(r){a+=r.seen;c+=r.ok}}));
     l.push([lid,s.length,ids.length,pct(c,a),a,ids.filter(isMastered).length,TS?(TS[lid]||0):null,
-            _a2?ids.filter(id=>(S.wr||{})[id]>=_a2.since).length:null,dirStats(ids).c,dirStats(ids).p]);   /* …, words written correctly since the task */   /* …, answered all time, mastered, answered since the task */
+            _a2?ids.filter(id=>(S.wr||{})[id]>=_a2.since).length:null,dirStats(ids).c,dirStats(ids).p,
+            _a2?ids.filter(id=>(S.wt||{})[id]>=_a2.since||(S.wr||{})[id]>=_a2.since).length:null]);   /* …, words tried in writing since the task */   /* …, words written correctly since the task */   /* …, answered all time, mastered, answered since the task */
   }));
   const x=S.exams.slice(-5).map(e2=>[Math.round(e2.t/DAY),e2.pct,e2.n]);
   const a2=assignment();
